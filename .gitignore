@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-single/
+*.zip
+.env*
+*.log
+# local test artifacts (regenerate with scripts/*.mjs)
+screenshots/
+test-results/
+playwright-report/
+samples/exported-from-single-file.xlsx
+.DS_Store

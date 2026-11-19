@@ -1,0 +1,16 @@
+{
+  "name": "Carry · Golf League",
+  "short_name": "Carry",
+  "description": "9-hole golf league tracker: handicaps, rotating teams, skins, subs, TV leaderboard.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07110d",
+  "theme_color": "#07110d",
+  "orientation": "any",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
