@@ -49,6 +49,10 @@ const P = {
   mail: 'M3 5h18v14H3zM3 6l9 7 9-7',
   play: 'M7 4v16l13-8z',
   calendar: 'M4 5h16v16H4zM4 10h16M9 3v4M15 3v4',
+  camera: 'M3 8a2 2 0 0 1 2-2h2.5l1.5-2h6l1.5 2H19a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  image: 'M4 4h16v16H4zM4 16l5-5 4 4 2-2 5 5M15.5 8.5h.01',
+  rotate: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',
+  scan: 'M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10',
 };
 export function Icon({ name, size = 20, stroke = 1.8, style, className }) {
   return (

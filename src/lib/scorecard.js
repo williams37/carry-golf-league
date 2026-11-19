@@ -208,9 +208,10 @@ function scoreRow(r, par) {
   const totalRead = r.total && Number.isFinite(r.total.value) && r.total.value >= 9 && r.total.value <= 135 ? r.total.value : null;
   const complete = holes.every((v) => v != null);
   const totalOk = totalRead != null && complete ? sum(holes) === totalRead : null;
+  const sumOk = totalRead != null && complete && sum(holes) === totalRead; // OUT checksum: strong evidence every cell is right
   const flags = holes.map((v, k) => {
     if (v == null) return 'missing';
-    if (conf[k] < 70) return 'low';
+    if (!sumOk && conf[k] < (totalRead != null ? 75 : 60)) return 'low';
     if (par && par[k] && (v - par[k] >= 5 || v <= par[k] - 2)) return 'odd'; // eagle-or-better / +5: double-check
     if (v === 1) return 'odd';
     return null;

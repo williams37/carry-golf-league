@@ -220,7 +220,7 @@ export function weekEntrants(league, week, hcp = computeHandicaps(league)) {
     const gross = counted ? sum(counted) : null;
     out.push({
       key, regularId: p.id, isSub, name: isSub ? sub.name : p.name, color: p.color,
-      index, ch, ph, holes, status: rec?.status || null, complete: !!counted,
+      index, ch, ph, holes, status: rec?.status || null, photo: rec?.photo || null, complete: !!counted,
       entered: holes.filter((h) => Number.isFinite(h) && h > 0).length,
       gross, net: counted ? gross - ph : null, team: teamOf[p.id] ?? null,
     });

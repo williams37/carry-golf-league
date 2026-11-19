@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { Icon, Avatar, Strip, Sheet, fmtIdx, fmtHcp, shortName, Empty, Switch } from '../components/ui.jsx';
 import ScorePad from './ScorePad.jsx';
+import { PhotoLightbox, PhotoThumb } from './CardPhoto.jsx';
 import { weekState, fmtDate } from '../lib/helpers.js';
 import { teamResults, weekSkins, generateTeams, repeatPartners, sortedWeeks, subKey, strokesOnHole, playerById } from '../lib/golf.js';
 
 const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5', 'Team 6'];
 
 export default function Week({ ctx }) {
-  const { league, derived, route, go, isCommissioner, canEditScore, setScore, mutate, toast, myPlayerId } = ctx;
+  const { league, derived, route, go, isCommissioner, canEditScore, setScore, deleteScore, removePhoto, photoUrl, mutate, toast, myPlayerId, mode } = ctx;
+  const [viewPhoto, setViewPhoto] = useState(null);
   const weeks = derived.weeks;
   const week = weeks.find((w) => w.id === route[1]) || weeks.find((w) => !weekState(league, w, derived.hcp).final) || weeks[weeks.length - 1];
   const [pad, setPad] = useState(null);
@@ -36,10 +38,16 @@ export default function Week({ ctx }) {
   const repeats = repeatPartners(week.teams || [], history);
 
   const openPad = (e) => setPad(e);
-  const save = async (holes) => {
-    await setScore(week.id, pad.key, holes);
-    toast(holes.every((x) => x > 0) ? `${shortName(pad.name)}: ${holes.reduce((a, b) => a + b, 0)} saved` : 'Card saved');
-    setPad(null);
+  const save = async (holes, photo) => {
+    const who = pad; setPad(null);
+    try {
+      await setScore(week.id, who.key, holes, undefined, photo || undefined);
+      toast(holes.every((x) => x > 0) ? `${shortName(who.name)}: ${holes.reduce((a, b) => a + b, 0)} saved${photo ? ' with photo' : ''}` : 'Card saved');
+    } catch (e) { toast(e.message || 'Could not save the card'); }
+  };
+  const del = async () => {
+    const who = pad; setPad(null);
+    try { await deleteScore(week.id, who.key); toast(`${shortName(who.name)}'s card deleted`); } catch (e) { toast(e.message || 'Could not delete the card'); }
   };
 
   return (
@@ -99,7 +107,7 @@ export default function Week({ ctx }) {
             {t.members.map((e) => (
               <Entrant key={e.key} e={e} course={course} skins={skinHoles[e.key] || []} me={e.regularId === myPlayerId && !e.isSub}
                 canEdit={canEditScore(e.key)} isCommissioner={isCommissioner}
-                onPad={() => openPad(e)} onSub={() => setSubFor(e)}
+                onPad={() => openPad(e)} onSub={() => setSubFor(e)} photoUrl={photoUrl} onPhoto={() => setViewPhoto(e)}
                 onApprove={() => { setScore(week.id, e.key, e.holes, 'approved'); toast('Card approved'); }} />
             ))}
           </section>
@@ -113,7 +121,10 @@ export default function Week({ ctx }) {
         </div>
       )}
 
-      <ScorePad open={!!pad} entrant={pad} course={course} onClose={() => setPad(null)} onSave={save} readOnly={pad && !canEditScore(pad.key)} />
+      <ScorePad open={!!pad} entrant={pad && (ents.find((x) => x.key === pad.key) || pad)} course={course} onClose={() => setPad(null)} onSave={save} readOnly={pad && !canEditScore(pad.key)}
+        cloud={mode === 'cloud'} photoUrl={photoUrl} onDelete={isCommissioner ? del : null}
+        onRemovePhoto={pad ? () => { removePhoto(week.id, pad.key); toast('Photo removed'); } : null} />
+      {viewPhoto && <PhotoLightbox path={viewPhoto.photo} photoUrl={photoUrl} title={`${viewPhoto.name} · Week ${week.number}`} onClose={() => setViewPhoto(null)} />}
       <SubSheet ctx={ctx} week={week} entrant={subFor} onClose={() => setSubFor(null)} />
       <WeekSheet ctx={ctx} week={editWeek} onClose={() => setEditWeek(null)} />
       <TeamsSheet ctx={ctx} week={week} open={editTeams} onClose={() => setEditTeams(false)} history={history} />
@@ -121,7 +132,7 @@ export default function Week({ ctx }) {
   );
 }
 
-function Entrant({ e, course, skins, me, canEdit, isCommissioner, onPad, onSub, onApprove }) {
+function Entrant({ e, course, skins, me, canEdit, isCommissioner, onPad, onSub, onApprove, onPhoto, photoUrl }) {
   const strokes = course.holes.map((h) => strokesOnHole(e.ph, h.si));
   return (
     <div className="entrant">
@@ -144,6 +155,7 @@ function Entrant({ e, course, skins, me, canEdit, isCommissioner, onPad, onSub, 
         <button className={`btn sm ${canEdit && !e.complete ? 'primary' : ''}`} onClick={onPad}>
           <Icon name={canEdit ? 'edit' : 'card'} size={15} /> {canEdit ? (e.entered ? 'Edit card' : 'Enter card') : 'View'}
         </button>
+        {e.photo && <button className="btn sm photo-btn" onClick={onPhoto} aria-label={`View ${e.name}'s card photo`} data-testid="entrant-photo"><PhotoThumb path={e.photo} photoUrl={photoUrl} size={22} /> Card</button>}
         {isCommissioner && e.status === 'pending' && <button className="btn sm" onClick={onApprove}><Icon name="check" size={15} /> Approve</button>}
         {isCommissioner && <button className="btn sm ghost" onClick={onSub} aria-label={e.isSub ? 'Edit substitute' : 'Bring in a substitute'}><Icon name="sub" size={15} /> {e.isSub ? 'Sub' : 'Sub in'}</button>}
       </div>
@@ -152,7 +164,7 @@ function Entrant({ e, course, skins, me, canEdit, isCommissioner, onPad, onSub, 
 }
 
 function SubSheet({ ctx, week, entrant, onClose }) {
-  const { league, mutate, toast } = ctx;
+  const { league, mutate, toast, deleteScore } = ctx;
   const regular = entrant ? playerById(league, entrant.regularId) : null;
   const existing = entrant && week.subs?.[entrant.regularId];
   const [name, setName] = useState('');
@@ -165,6 +177,7 @@ function SubSheet({ ctx, week, entrant, onClose }) {
     toast(`${name || 'Sub'} is in for ${shortName(regular.name)}`); onClose();
   };
   const remove = () => {
+    if (week.scores?.[subKey(entrant.regularId)]) deleteScore(week.id, subKey(entrant.regularId)).catch(() => {}); // card + photo
     mutate((l) => { const w = l.weeks.find((x) => x.id === week.id); delete w.subs[entrant.regularId]; delete w.scores?.[subKey(entrant.regularId)]; });
     toast(`${shortName(regular.name)} is back in`); onClose();
   };
@@ -183,12 +196,13 @@ function SubSheet({ ctx, week, entrant, onClose }) {
 }
 
 function WeekSheet({ ctx, week, onClose }) {
-  const { league, mutate, toast, go } = ctx;
+  const { league, mutate, toast, go, deleteWeekData } = ctx;
   const [f, setF] = useState(null);
   useEffect(() => setF(week ? { date: week.date, courseId: week.courseId } : null), [week?.id]); // eslint-disable-line
   if (!week || !f) return null;
   const del = () => {
     if (!confirm(`Delete week ${week.number} and all its scores?`)) return;
+    deleteWeekData(week.id).catch(() => {}); // score rows + card photos
     mutate((l) => { l.weeks = l.weeks.filter((w) => w.id !== week.id); });
     onClose(); go('scores'); toast('Week deleted');
   };

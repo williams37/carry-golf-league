@@ -6,6 +6,7 @@
 <img src="docs/home-phone.jpg" width="200" alt="Clubhouse on a phone">
 <img src="docs/scorepad-phone.jpg" width="200" alt="Score pad">
 <img src="docs/email-sheet.jpg" width="200" alt="Email the workbook">
+<img src="docs/scan-review-phone.jpg" width="200" alt="Scorecard photo read into a card">
 </p>
 <img src="docs/live-approval.jpg" width="820" alt="Commissioner sees a player's card arrive live">
 <img src="docs/tv-board.jpg" width="820" alt="TV board">
@@ -18,6 +19,7 @@ A mobile-first web app for a weekly indoor (GSPro) league. Players sign in, clai
 | | |
 |---|---|
 | **Weekly scoring** | Hole-by-hole cards with a thumb-sized score pad, classic scorecard notation (circles for birdies, squares for bogeys) and stroke dots |
+| **Scan the card** | Snap the bay screen at the end of the round and Carry reads the hole-by-hole scores **on the phone** (free, no API keys, no upload to read). It picks your row by name on multi-player cards, flags holes to double-check, checks the sum against the card's OUT total, and never saves until you tap Save. The photo can be attached as proof: private to the league in cloud mode, on-device in local mode |
 | **Handicaps** | WHS-style 9-hole league index: starts at 0 (or a set value), calculated after 4 rounds, updated weekly, net-double-bogey capped, every number explained |
 | **Teams** | Rotating 2-player teams. Auto-rotate avoids repeat partners (a full round-robin: 7 weeks with 8 players) and then balances handicaps. Tap two players to swap them |
 | **Standings** | Lowest cumulative net, regulars only, fair absence handling, season-replay scrubber with animated reordering |
@@ -91,14 +93,34 @@ Then add that URL to the Supabase Site URL and Redirect URLs (step 2 above).
 3. Push. `.github/workflows/deploy.yml` tests, builds (with `BASE_PATH=/<repo>/`), and publishes `dist/` plus a `404.html` that sends deep links like `/carry-golf-league/join/CODE` to the app's `#/join/CODE` route, (already pointed at Carry Cloud; repo variables `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` override it).
 4. Put the Pages URL in Supabase's Site URL and Redirect URLs (dashboard step 2).
 
+## Scorecard photos
+
+**How the reader works** (`src/lib/ocr.js` + `src/lib/scorecard.js`). Everything runs in the browser with [tesseract.js](https://github.com/naptha/tesseract.js). Its worker, WebAssembly core and English model (~7 MB) are self-hosted in `public/ocr/` and fetched only the first time someone scans. After that the service worker caches them, so scanning works offline.
+
+1. **Layout pass.** Grayscale plus a percentile stretch, auto-inverted for dark screens. OCR finds the `HOLE 1 … 9` header (it tolerates two missing numbers and extrapolates). That fixes the column positions and the table angle, which handles skewed and perspective photos.
+2. **Rows.** Label words on the left (`PAR`, `HCP`, player names) and clusters of numbers place each row. Rows are re-centered on their glyphs. HCP/stroke-index rows, yardage rows and the header are skipped. `PAR` (or a row matching the course's par) is used for checks.
+3. **Cells.** Each cell is cut out along the table angle and binarized against its *own* background, so white-on-red, black-on-white and white-on-dark all work. GSPro's circles and boxes are removed as components that enclose a digit. All cells are then re-rendered as a clean black-on-white table and read in **one** digits-only OCR call.
+4. **Auto-zoom.** If the table is small in the frame, Carry re-reads just that region at about twice the resolution. Several preprocessing passes are merged per cell by vote.
+5. **Checks.** Holes are summed against the card's OUT total. Low-confidence, missing and unusual cells (aces, eagle-or-better, +5) are highlighted. If the course par on the card differs from the week's course, Carry warns that it might be the wrong week.
+
+**Accuracy on the synthetic test set** (`node scripts/ocr-accuracy.mjs`). Eight GSPro-style cards were rendered with Playwright: colors and shapes styles, 1/2/4 players, 9- and 18-hole cards, skewed, blurred, and two photo-of-a-screen variants with perspective, moiré, glare, noise and JPEG compression. Each was read uncropped and with a loose user crop: **139 of 144 cells right (96.5%), 13 of 16 cards perfect.** The misses were a heavily blurred 3 read as 1 (flagged as an "ace" to check) and the hardest uncropped screen photo, which read 6/9 with the other 3 left blank (flagged). **No wrong cell went unflagged.** These are synthetic images, so real bay photos will vary. That is why every read goes through the review step.
+
+**Storage (cloud).** Photos are compressed on the phone (≤1600 px, WebP, ~110–150 KB) and stored in a **private** Supabase Storage bucket `scorecards` at `<league>/<week>/<player>.webp`. Storage RLS (`supabase/schema.sql`, "Scorecard photos") lets only league members read (through short-lived signed URLs), and only the card's player or the commissioner upload, replace or delete. The bucket accepts only WebP and JPEG up to 512 KB. Supabase blocks deleting storage files from SQL, so the app removes them through the Storage API: deleting a card, a week or a league deletes its photos first. **Cost:** the free plan includes 1 GB of storage, roughly 7,000 card photos at this size.
+
+**Local mode** keeps attached photos in this browser's IndexedDB. They are not part of the JSON backup.
+
 ## Testing
 
 ```bash
-npm test                         # 22 unit tests (golf math, Excel)
+npm test                         # 43 unit tests (golf math, Excel, share, scorecard parser + grid geometry)
 npm run build && npx vite preview --port 4173 &
 node scripts/screenshots.mjs     # demo screenshots + layout/overflow checks, single-file smoke test
-# live cloud E2E: needs three confirmed users carry.e2e+{commish,dee,sam}@example.com with one password
-VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=… E2E_PW=… node scripts/e2e-cloud.mjs
+node scripts/photo-e2e.mjs       # scan flow through the real UI at 390/360 px, 23 checks → screenshots/photo-*.png
+node scripts/ocr-accuracy.mjs    # real in-browser OCR over tests/fixtures/scorecards (regenerate: scripts/make-scorecards.mjs)
+# live cloud tests: confirmed users carry.e2e+{commish,dee,sam,out}@example.com with one password
+VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=… E2E_PW=… node scripts/e2e-cloud.mjs          # 26 checks
+VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=… E2E_PW=… node scripts/storage-rls-live.mjs   # 18 photo-storage RLS checks
+VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=… E2E_PW=… node scripts/photo-cloud-e2e.mjs    # 11 checks: scan → store → view → delete
 ```
 
 ## How the golf math works
@@ -119,6 +141,10 @@ Official WHS (2024+) turns 9-hole rounds into 18-hole differentials using an unp
 src/lib/golf.js        pure scoring engine (handicaps, teams, standings, skins)
 src/lib/seed.js        demo league generator (deterministic)
 src/lib/excel.js       ExcelJS workbook builder (lazy-loaded)
+src/lib/ocr.js         scorecard photo reader (browser: preprocessing, grid cells, Tesseract, compression)
+src/lib/scorecard.js   scorecard parser (pure: header/row geometry, row classification, checks, text fallback)
+src/lib/photos.js      on-device photo store (IndexedDB) for local leagues
+public/ocr/            self-hosted Tesseract worker, WASM cores and English model
 src/lib/rules.js       Rules of Golf summaries (own words) + WHS + sim notes
 src/lib/store/         local.js (localStorage) and cloud.js (Supabase) adapters
 src/lib/useLeague.js   state hook: picks the adapter, auth state machine, actions
@@ -133,4 +159,6 @@ scripts/e2e-cloud.mjs    3-browser end-to-end test against the live Supabase pro
 * Until dashboard step 1 is done, only members of your Supabase organization can receive sign-up emails. Turn off "Confirm email" or add custom SMTP before you invite people.
 * Cloud saves are last-write-wins for league settings. Scores are per-row, so players entering cards at the same time never collide.
 * Local mode keeps data in one browser. Use **Backup (.json)** and **Import** to move it, or turn on cloud sync.
+* The scanner is tuned for GSPro-style tables (a `HOLE 1–9` header, then a row per player). A photo cropped to a single row falls back to a plain text parser, which is less reliable. Very blurry or glare-washed photos can leave holes blank. You fill those in on the review screen.
+* The first scan downloads ~7 MB, so do it on Wi-Fi once. The single-file build loads the reader from the jsDelivr CDN instead of `public/ocr/`.
 * The single-file build skips the service worker (browsers don't allow one from `file://` or inline), so it isn't installable as a PWA. The `dist/` build is.

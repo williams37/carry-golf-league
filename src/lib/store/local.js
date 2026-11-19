@@ -3,6 +3,8 @@
  * Shape in localStorage['carry:v1']: { leagues: { [id]: League } }
  * Changes in another tab are pushed through the `storage` event (live updates locally too).
  */
+import { localPhotos, cardKey } from '../photos.js';
+
 const KEY = 'carry:v1';
 
 function read() {
@@ -25,11 +27,35 @@ export const localStore = {
     const db = read();
     const l = db.leagues[league.id] || league;
     const w = l.weeks.find((x) => x.id === weekId);
-    w.scores = { ...w.scores, [key]: { holes, status, by: 'local', at: Date.now() } };
+    const prev = w.scores?.[key];
+    w.scores = { ...w.scores, [key]: { holes, status, by: 'local', at: Date.now(), ...(prev?.photo ? { photo: prev.photo } : {}) } };
     db.leagues[l.id] = l; write(db);
     return l;
   },
-  async deleteLeague(id) { const db = read(); delete db.leagues[id]; write(db); },
+  async deleteLeague(id) { const db = read(); delete db.leagues[id]; write(db); localPhotos.delPrefix(id + '/').catch(() => {}); },
+  // ---- scorecard photos: kept on this device only (IndexedDB) ----
+  patchScore(league, weekId, key, patch) {
+    const db = read(); const l = db.leagues[league.id]; const w = l?.weeks.find((x) => x.id === weekId);
+    if (!w?.scores?.[key]) return;
+    w.scores[key] = { ...w.scores[key], ...patch }; if (patch.photo == null) delete w.scores[key].photo; write(db);
+  },
+  async savePhoto(league, weekId, key, blob) {
+    const path = cardKey(league.id, weekId, key);
+    await localPhotos.put(path, blob);
+    this.patchScore(league, weekId, key, { photo: path });
+    return path;
+  },
+  async photoUrl(path) { const b = await localPhotos.get(path); return b ? URL.createObjectURL(b) : null; },
+  async deletePhoto(league, weekId, key) {
+    await localPhotos.del(cardKey(league.id, weekId, key)).catch(() => {});
+    this.patchScore(league, weekId, key, { photo: null });
+  },
+  async deleteScore(league, weekId, key) {
+    await localPhotos.del(cardKey(league.id, weekId, key)).catch(() => {});
+    const db = read(); const w = db.leagues[league.id]?.weeks.find((x) => x.id === weekId);
+    if (w?.scores) { delete w.scores[key]; write(db); }
+  },
+  async deleteWeekData(league, weekId) { await localPhotos.delPrefix(`${league.id}/${weekId}/`).catch(() => {}); },
   subscribe(id, cb) {
     const h = (e) => { if (e.key === KEY) { const l = read().leagues[id]; if (l) cb(l); } };
     window.addEventListener('storage', h);

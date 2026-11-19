@@ -145,6 +145,22 @@ const stripScores = ({ members, inviteCode, id, ...league }) => ({
   weeks: (league.weeks || []).map(({ scores, ...w }) => w),
 });
 
+const BUCKET = 'scorecards';
+const urlCache = new Map();
+/** Remove every object under a folder (one level of sub-folders: league/week/file). */
+async function removeFolder(c, prefix) {
+  const files = [];
+  const walk = async (p, depth) => {
+    const { data } = await c.storage.from(BUCKET).list(p, { limit: 1000 });
+    for (const e of data || []) {
+      if (e.id) files.push(`${p}/${e.name}`); else if (depth < 2) await walk(`${p}/${e.name}`, depth + 1);
+    }
+  };
+  await walk(prefix, 0);
+  for (let i = 0; i < files.length; i += 100) await c.storage.from(BUCKET).remove(files.slice(i, i + 100));
+  return files.length;
+}
+
 export function cloudStore(cfg) {
   const sb = () => getClient(cfg);
   return {
@@ -169,7 +185,7 @@ export function cloudStore(cfg) {
       for (const w of league.weeks || []) w.scores = {};
       for (const s of sc.data || []) {
         const w = league.weeks.find((x) => x.id === s.week_id);
-        if (w) w.scores[s.player_key] = { holes: s.holes, status: s.status, by: s.entered_by, at: Date.parse(s.updated_at) };
+        if (w) w.scores[s.player_key] = { holes: s.holes, status: s.status, by: s.entered_by, at: Date.parse(s.updated_at), ...(s.photo_path ? { photo: s.photo_path } : {}) };
       }
       league.members = mem.data || [];
       const me = league.members.find((m) => m.user_id === user.user.id);
@@ -194,7 +210,54 @@ export function cloudStore(cfg) {
       const { error } = await c.from('scores').upsert({ league_id: league.id, week_id: weekId, player_key: key, holes, status });
       if (error) throw error;
     },
-    async deleteLeague(id) { const c = await sb(); const { error } = await c.from('leagues').delete().eq('id', id); if (error) throw error; },
+    async deleteLeague(id) {
+      const c = await sb();
+      await removeFolder(c, id); // storage objects can't cascade from SQL — clear the league's photos first
+      const { error } = await c.from('leagues').delete().eq('id', id); if (error) throw error;
+    },
+    // ---- scorecard photos: private bucket, path <league>/<week>/<player>.<ext>, RLS in supabase/schema.sql ----
+    async savePhoto(league, weekId, key, blob) {
+      const c = await sb();
+      const ext = blob.type === 'image/webp' ? 'webp' : 'jpg';
+      const path = `${league.id}/${weekId}/${String(key).replace(/:/g, '_')}.${ext}`;
+      const up = await c.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: blob.type, cacheControl: '3600' });
+      if (up.error) throw new Error(`Photo upload failed: ${up.error.message}`);
+      const other = path.replace(/\.(webp|jpg)$/, ext === 'webp' ? '.jpg' : '.webp');
+      await c.storage.from(BUCKET).remove([other]).catch(() => {}); // a previous photo in the other format
+      const { error } = await c.from('scores').update({ photo_path: path }).eq('league_id', league.id).eq('week_id', weekId).eq('player_key', key);
+      if (error) throw error;
+      urlCache.delete(path);
+      return path;
+    },
+    async photoUrl(path) {
+      const hit = urlCache.get(path);
+      if (hit && hit.exp > Date.now()) return hit.url;
+      const c = await sb();
+      const { data, error } = await c.storage.from(BUCKET).createSignedUrl(path, 3600);
+      if (error) throw new Error("Couldn't load the card photo.");
+      urlCache.set(path, { url: data.signedUrl, exp: Date.now() + 50 * 60e3 });
+      return data.signedUrl;
+    },
+    async deletePhoto(league, weekId, key, path) {
+      const c = await sb();
+      if (path) { const r = await c.storage.from(BUCKET).remove([path]); if (r.error) throw r.error; }
+      const { error } = await c.from('scores').update({ photo_path: null }).eq('league_id', league.id).eq('week_id', weekId).eq('player_key', key);
+      if (error) throw error;
+      urlCache.delete(path);
+    },
+    /** Deleting a card deletes its photo too (photo first: once the row is gone nobody can find the file). */
+    async deleteScore(league, weekId, key, path) {
+      const c = await sb();
+      if (path) { const r = await c.storage.from(BUCKET).remove([path]); if (r.error) throw r.error; }
+      const { error } = await c.from('scores').delete().eq('league_id', league.id).eq('week_id', weekId).eq('player_key', key);
+      if (error) throw error;
+    },
+    async deleteWeekData(league, weekId) {
+      const c = await sb();
+      await removeFolder(c, `${league.id}/${weekId}`);
+      const { error } = await c.from('scores').delete().eq('league_id', league.id).eq('week_id', weekId);
+      if (error) throw error;
+    },
     async join(code, displayName) {
       const c = await sb();
       const { data, error } = await c.rpc('join_league', { p_code: code.trim().toUpperCase(), p_display_name: displayName || null });

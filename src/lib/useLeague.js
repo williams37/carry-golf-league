@@ -105,17 +105,48 @@ export function useLeague() {
     return persist(() => store.saveLeague(next));
   }, [store, persist]);
 
-  const setScore = useCallback((weekId, key, holes, statusOverride) => {
+  const setScore = useCallback((weekId, key, holes, statusOverride, photo) => {
     const isComm = state.role === 'commissioner';
     const status = statusOverride || (mode === 'local' || isComm ? 'approved' : 'pending');
     setState((s) => {
       const l = structuredClone(s.league);
       const w = l.weeks.find((x) => x.id === weekId);
-      w.scores = { ...w.scores, [key]: { holes, status, by: 'me', at: Date.now() } };
+      const prev = w.scores?.[key];
+      w.scores = { ...w.scores, [key]: { holes, status, by: 'me', at: Date.now(), ...(prev?.photo ? { photo: prev.photo } : {}) } };
       return { ...s, league: l };
     });
-    return persist(() => store.setScore(leagueRef.current, weekId, key, holes, status));
-  }, [store, persist, state.role, mode]);
+    return persist(async () => {
+      await store.setScore(leagueRef.current, weekId, key, holes, status);
+      if (photo) {
+        const path = await store.savePhoto(leagueRef.current, weekId, key, photo);
+        patchLocal(weekId, key, { photo: path });
+      }
+    });
+  }, [store, persist, state.role, mode]); // eslint-disable-line
+
+  const patchLocal = (weekId, key, patch) => setState((s) => {
+    const l = structuredClone(s.league); const w = l.weeks.find((x) => x.id === weekId);
+    if (!w?.scores?.[key]) return s;
+    w.scores[key] = { ...w.scores[key], ...patch }; if (patch.photo == null) delete w.scores[key].photo;
+    return { ...s, league: l };
+  });
+
+  /** Delete a card and its photo (commissioner, or local mode). */
+  const deleteScore = useCallback((weekId, key) => {
+    const path = leagueRef.current?.weeks.find((w) => w.id === weekId)?.scores?.[key]?.photo;
+    setState((s) => { const l = structuredClone(s.league); const w = l.weeks.find((x) => x.id === weekId); if (w?.scores) delete w.scores[key]; return { ...s, league: l }; });
+    return persist(() => store.deleteScore(leagueRef.current, weekId, key, path));
+  }, [store, persist]);
+
+  const removePhoto = useCallback((weekId, key) => {
+    const path = leagueRef.current?.weeks.find((w) => w.id === weekId)?.scores?.[key]?.photo;
+    patchLocal(weekId, key, { photo: null });
+    return persist(() => store.deletePhoto(leagueRef.current, weekId, key, path));
+  }, [store, persist]); // eslint-disable-line
+
+  const photoUrl = useCallback((path) => store.photoUrl(path), [store]);
+  /** Remove a week's cards + photos server-side before the week leaves the league document. */
+  const deleteWeekData = useCallback((weekId) => store.deleteWeekData(leagueRef.current, weekId), [store]);
 
   const derived = useMemo(() => {
     if (!state.league) return null;
@@ -129,7 +160,7 @@ export function useLeague() {
     mode, setMode: (m) => { writePrefs({ mode: m }); setModeState(m); },
     authState, checkAuth, cfg, store, leagues, refreshList, activeId,
     setActiveId: (id) => { setActiveId(id); writePrefs({ activeLeagueId: id }); },
-    ...state, derived, syncing, mutate, setScore, reload: load, canEditScore,
+    ...state, derived, syncing, mutate, setScore, deleteScore, removePhoto, photoUrl, deleteWeekData, reload: load, canEditScore,
     isCommissioner: mode === 'local' || state.role === 'commissioner',
   };
 }

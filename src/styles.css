@@ -411,3 +411,86 @@ mark { background: color-mix(in oklab, var(--lime) 35%, transparent); color: inh
   .excel-choice .excel-acts { flex: 1 1 100%; padding-left: 58px; }
   .excel-choice .excel-acts .btn { flex: 1; }
 }
+
+/* ---------- Scorecard scan ---------- */
+.pad-photo { margin: -2px 0 12px; display: grid; gap: 8px; }
+.scan-cta { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px dashed color-mix(in oklab, var(--aqua) 45%, var(--line-2)); background: linear-gradient(100deg, color-mix(in oklab, var(--aqua) 10%, var(--surface-2)), var(--surface-2)); color: var(--text); transition: .2s var(--ease); }
+.scan-cta:hover { border-style: solid; }
+.scan-cta:active { transform: scale(.985); }
+.scan-cta b, .photo-pill b { display: block; font-size: 14px; font-weight: 700; }
+.scan-cta small, .photo-pill small { display: block; font-size: 12px; color: var(--muted); margin-top: 1px; }
+.scan-cta-ic { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; background: var(--tracer); color: #08150e; flex: none; box-shadow: 0 6px 18px -8px var(--aqua); }
+.photo-pill { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 8px; border-radius: 14px; border: 1px solid color-mix(in oklab, var(--lime) 35%, var(--line-2)); background: color-mix(in oklab, var(--lime) 8%, var(--surface-2)); text-align: left; color: var(--text); width: 100%; }
+.photo-pill > img { width: 40px; height: 40px; border-radius: 9px; object-fit: cover; flex: none; }
+.photo-pill.as-btn { border-color: var(--line-2); background: var(--surface-2); }
+.photo-thumb { display: inline-grid; place-items: center; border-radius: 7px; overflow: hidden; background: var(--surface-3); color: var(--muted); flex: none; }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.photo-btn { padding-left: 5px; gap: 6px; }
+.scan-note { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--aqua); margin: -4px 0 10px; font-weight: 600; }
+
+.scan { display: grid; gap: 0; }
+.scan-drop { border: 1.5px dashed var(--line-2); border-radius: 20px; padding: 22px 16px 18px; text-align: center; background: radial-gradient(120% 90% at 50% 0%, color-mix(in oklab, var(--aqua) 9%, transparent), transparent 70%), var(--surface-2); }
+.scan-drop p { font-size: 13.5px; line-height: 1.45; margin: 6px auto 14px; max-width: 34ch; }
+.scan-art { width: 64px; height: 64px; margin: 0 auto 10px; border-radius: 20px; display: grid; place-items: center; background: var(--tracer); color: #08150e; box-shadow: 0 14px 34px -14px var(--aqua); animation: floaty 3.2s ease-in-out infinite; }
+.scan-art.warn { background: color-mix(in oklab, var(--gold) 85%, #fff); animation: none; }
+.scan-title { font-family: var(--display); font-size: 21px; font-weight: 600; }
+.scan-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.scan-btns .btn { flex: 1 1 140px; max-width: 220px; }
+.scan-tips { list-style: none; padding: 0; margin: 14px 2px 6px; display: grid; gap: 7px; font-size: 13px; color: var(--text-2); }
+.scan-tips li { position: relative; padding-left: 16px; line-height: 1.4; }
+.scan-tips li::before { content: ''; position: absolute; left: 2px; top: .5em; width: 6px; height: 6px; border-radius: 6px; background: var(--aqua); }
+.scan-tips b { color: var(--text); font-weight: 650; }
+.scan-privacy { font-size: 12px; display: flex; gap: 6px; align-items: flex-start; margin: 6px 2px 10px; }
+.scan-privacy svg { flex: none; margin-top: 2px; }
+@keyframes floaty { 50% { transform: translateY(-4px); } }
+
+.cropper { position: relative; border-radius: 14px; overflow: hidden; background: #000; touch-action: none; user-select: none; line-height: 0; }
+.cropper img { width: 100%; display: block; max-height: 52vh; object-fit: contain; pointer-events: none; }
+.crop-frame { position: absolute; border: 2px solid var(--lime); box-shadow: 0 0 0 9999px rgba(0,0,0,.5); border-radius: 6px; cursor: move; touch-action: none; }
+.crop-grid { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, transparent 33%, rgba(255,255,255,.18) 33.2%, transparent 33.5%, transparent 66.4%, rgba(255,255,255,.18) 66.6%, transparent 66.9%), linear-gradient(transparent 33%, rgba(255,255,255,.18) 33.2%, transparent 33.5%, transparent 66.4%, rgba(255,255,255,.18) 66.6%, transparent 66.9%); }
+.crop-h { position: absolute; width: 30px; height: 30px; touch-action: none; }
+.crop-h::after { content: ''; position: absolute; width: 16px; height: 16px; border: 4px solid var(--lime); border-radius: 3px; }
+.crop-h.tl { left: -10px; top: -10px; cursor: nwse-resize; } .crop-h.tl::after { left: 6px; top: 6px; border-right: 0; border-bottom: 0; }
+.crop-h.tr { right: -10px; top: -10px; cursor: nesw-resize; } .crop-h.tr::after { right: 6px; top: 6px; border-left: 0; border-bottom: 0; }
+.crop-h.bl { left: -10px; bottom: -10px; cursor: nesw-resize; } .crop-h.bl::after { left: 6px; bottom: 6px; border-right: 0; border-top: 0; }
+.crop-h.br { right: -10px; bottom: -10px; cursor: nwse-resize; } .crop-h.br::after { right: 6px; bottom: 6px; border-left: 0; border-top: 0; }
+
+.scan-stage { position: relative; height: 210px; border-radius: 16px; overflow: hidden; background: var(--surface-3); }
+.scan-stage img { filter: saturate(.7) brightness(.85); }
+.scan-stage.skeleton { animation: pulse 1.4s infinite; }
+.scan-beam { position: absolute; left: 0; right: 0; height: 70px; top: -70px; background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--aqua) 40%, transparent) 85%, var(--lime)); animation: beam 1.8s var(--ease) infinite; mix-blend-mode: screen; }
+@keyframes beam { to { top: 100%; } }
+.scan-progress { height: 6px; border-radius: 6px; background: var(--surface-3); overflow: hidden; margin-top: 12px; }
+.scan-progress i { display: block; height: 100%; background: var(--tracer); border-radius: 6px; transition: width .5s var(--ease); }
+
+.scan-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.scan-thumb { position: relative; width: 92px; height: 62px; border-radius: 12px; overflow: hidden; background: var(--surface-3); flex: none; border: 1px solid var(--line-2); }
+.scan-rows { margin: 0 0 10px; }
+.scan-cells { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 5px; }
+.scan-cell { border: 1px solid var(--line); background: var(--surface-2); border-radius: 12px; padding: 5px 0 6px; display: grid; justify-items: center; gap: 1px; position: relative; transition: .2s var(--ease); }
+.scan-cell .hn { font-size: 10px; color: var(--muted); font-weight: 700; }
+.scan-cell input { width: 100%; text-align: center; background: transparent; border: 0; outline: 0; font-family: var(--display); font-weight: 600; font-size: 19px; color: var(--text); padding: 0; height: 26px; -moz-appearance: textfield; }
+.scan-cell:focus-within { border-color: var(--accent); transform: translateY(-2px); }
+.scan-cell.birdie input { color: var(--birdie); } .scan-cell.eagle input { color: var(--eagle); } .scan-cell.bogey input { color: var(--bogey); }
+.scan-cell.flag { border-color: color-mix(in oklab, var(--gold) 70%, transparent); background: color-mix(in oklab, var(--gold) 14%, var(--surface-2)); }
+.scan-cell.flag::after { content: '?'; position: absolute; top: -6px; right: -4px; width: 15px; height: 15px; border-radius: 9px; background: var(--gold); color: var(--gold-ink); font-size: 10px; font-weight: 800; display: grid; place-items: center; }
+.scan-cell.flag.missing { border-style: dashed; }
+.scan-cell.flag.missing::after { content: '!'; }
+.scan-check { display: flex; gap: 14px; align-items: center; margin-top: 12px; padding: 10px 12px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.scan-check .ok { color: var(--lime); font-weight: 650; display: inline-flex; gap: 5px; align-items: center; }
+.scan-check .warn { color: var(--gold); font-weight: 600; display: inline-flex; gap: 5px; align-items: flex-start; }
+.scan-check .warn svg, .scan-check .ok svg { flex: none; margin-top: 2px; }
+.scan-attach { display: flex; gap: 10px; align-items: flex-start; margin-top: 10px; font-size: 12.5px; color: var(--text-2); cursor: pointer; }
+.scan-attach input { width: 18px; height: 18px; accent-color: var(--accent); margin: 1px 0 0; flex: none; }
+.scan-attach b { color: var(--text); }
+
+.lightbox { position: fixed; inset: 0; z-index: 120; background: rgba(3, 8, 6, .92); backdrop-filter: blur(6px); display: flex; flex-direction: column; animation: fade .2s ease; }
+.lightbox-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px calc(12px) 16px; color: #eaf4ee; padding-top: max(12px, env(safe-area-inset-top)); }
+.lightbox-bar .icon-btn { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.12); color: #fff; }
+.lightbox-bar .btn.ghost { color: #ffb3a8; }
+.lightbox-img { flex: 1; display: grid; place-items: center; padding: 8px 10px calc(16px + var(--safe-b)); min-height: 0; }
+.lightbox-img img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 10px; box-shadow: 0 30px 80px -20px #000; }
+.spinner { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.15); border-top-color: var(--lime); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fade { from { opacity: 0; } }
+@media (max-width: 380px) { .scan-cell input { font-size: 17px; } .scan-cells, .pad-holes { gap: 4px; } }

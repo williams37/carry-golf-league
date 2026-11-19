@@ -1,22 +1,36 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Sheet, Icon, scoreClass, scoreWord, haptic, fmtHcp } from '../components/ui.jsx';
 import { strokesOnHole, HOLES } from '../lib/golf.js';
+import { PhotoLightbox, PhotoThumb } from './CardPhoto.jsx';
+
+const ScanFlow = lazy(() => import('./ScanCard.jsx'));
 
 /** Thumb-friendly hole-by-hole entry. Tap a score → auto-advance. Keyboard digits work too. */
-export default function ScorePad({ open, onClose, entrant, course, onSave, readOnly }) {
+export default function ScorePad({ open, onClose, entrant, course, onSave, readOnly, cloud, photoUrl, onDelete, onRemovePhoto }) {
   const [holes, setHoles] = useState(() => entrant?.holes?.slice() || Array(HOLES).fill(null));
   const [cur, setCur] = useState(0);
   const [bump, setBump] = useState(0);
+  const [scan, setScan] = useState(false);
+  const [photo, setPhoto] = useState(null); // freshly scanned photo waiting for Save
+  const [photoPrev, setPhotoPrev] = useState(null);
+  const [viewing, setViewing] = useState(false);
+  const [fromScan, setFromScan] = useState(false);
   useEffect(() => {
     if (!open || !entrant) return;
     const h = entrant.holes?.slice() || Array(HOLES).fill(null);
     setHoles(h);
     const firstEmpty = h.findIndex((x) => !(x > 0));
     setCur(firstEmpty === -1 ? 0 : firstEmpty);
+    setScan(false); setPhoto(null); setFromScan(false); setViewing(false);
   }, [open, entrant?.key]); // eslint-disable-line
+  useEffect(() => {
+    if (!photo) { setPhotoPrev(null); return; }
+    const u = URL.createObjectURL(photo); setPhotoPrev(u);
+    return () => URL.revokeObjectURL(u);
+  }, [photo]);
 
   const setScore = (n) => {
-    if (readOnly) return;
+    if (readOnly || scan) return;
     haptic();
     setHoles((h) => { const c = h.slice(); c[cur] = n; return c; });
     setBump((b) => b + 1);
@@ -25,6 +39,7 @@ export default function ScorePad({ open, onClose, entrant, course, onSave, readO
   useEffect(() => {
     if (!open) return;
     const k = (e) => {
+      if (scan || /^(INPUT|TEXTAREA)$/.test(e.target?.tagName)) return;
       if (/^[1-9]$/.test(e.key)) setScore(Number(e.key));
       else if (e.key === '0') setScore(10);
       else if (e.key === 'Backspace') setScore(null);
@@ -46,18 +61,59 @@ export default function ScorePad({ open, onClose, entrant, course, onSave, readO
   const val = holes[cur];
   const keys = Array.from({ length: 11 }, (_, i) => i + 1);
 
+  const useScan = (h, blob) => {
+    setHoles(h); setPhoto(blob); setScan(false); setFromScan(true);
+    const firstEmpty = h.findIndex((x) => !(x > 0)); setCur(firstEmpty === -1 ? 0 : firstEmpty);
+  };
+  const title = <span className="row" style={{ gap: 8 }}>{entrant.name}{entrant.isSub && <span className="badge sub">Sub</span>}</span>;
+
+  if (scan) return (
+    <Sheet open={open} onClose={() => setScan(false)} title={<span className="row" style={{ gap: 8, minWidth: 0 }}><Icon name="scan" size={18} style={{ flex: 'none' }} /><span className="ellipsis">Scan card · {entrant.name}</span></span>} subtitle={`${course.name} · par ${course.holes.reduce((a, x) => a + x.par, 0)}`}>
+      <Suspense fallback={<div className="scan-stage skeleton" />}>
+        <ScanFlow entrant={entrant} course={course} cloud={cloud} onUse={useScan} onCancel={() => setScan(false)} />
+      </Suspense>
+    </Sheet>
+  );
+
   return (
     <Sheet open={open} onClose={onClose}
-      title={<span className="row" style={{ gap: 8 }}>{entrant.name}{entrant.isSub && <span className="badge sub">Sub</span>}</span>}
+      title={title}
       subtitle={`${course.name} · Playing handicap ${fmtHcp(entrant.ph)} (dots = strokes received)`}
       footer={readOnly ? <button className="btn block" onClick={onClose}>Close</button> : (
         <>
-          <button className="btn ghost" onClick={onClose}>Cancel</button>
-          <button className="btn primary grow" onClick={() => onSave(holes)}>
+          {onDelete && entrant.entered > 0 ? <button className="btn ghost danger" aria-label="Delete card" onClick={() => { if (confirm(`Delete ${entrant.name}'s card${entrant.photo ? ' and its photo' : ''}?`)) onDelete(); }}><Icon name="trash" size={17} /></button>
+            : <button className="btn ghost" onClick={onClose}>Cancel</button>}
+          <button className="btn primary grow" onClick={() => onSave(holes, photo)} data-testid="pad-save">
             <Icon name="check" size={18} /> {complete ? `Save card · ${gross}` : `Save ${filled.length}/9 holes`}
           </button>
         </>
       )}>
+      {(!readOnly || entrant.photo) && (
+        <div className="pad-photo">
+          {!readOnly && !photo && (
+            <button className="scan-cta" onClick={() => setScan(true)} data-testid="scan-open">
+              <span className="scan-cta-ic"><Icon name="camera" size={18} /></span>
+              <span className="grow"><b>Scan the scorecard</b><small>Snap the bay screen, we'll fill in the holes</small></span>
+              <Icon name="chev" size={16} />
+            </button>
+          )}
+          {photo && (
+            <div className="photo-pill" data-testid="photo-attached">
+              {photoPrev && <img src={photoPrev} alt="" />}
+              <span className="grow"><b>Photo attached</b><small>{fromScan ? 'Scores filled from the photo. Check them, then save.' : 'Saved with the card'}</small></span>
+              <button className="icon-btn" onClick={() => setPhoto(null)} aria-label="Remove photo"><Icon name="x" size={16} /></button>
+            </div>
+          )}
+          {!photo && entrant.photo && (
+            <button className="photo-pill as-btn" onClick={() => setViewing(true)} data-testid="view-card">
+              <PhotoThumb path={entrant.photo} photoUrl={photoUrl} size={40} />
+              <span className="grow"><b>View card photo</b><small>{readOnly ? 'Proof of the round' : 'Attached to this card'}</small></span>
+              <Icon name="chev" size={16} />
+            </button>
+          )}
+        </div>
+      )}
+      {fromScan && <div className="scan-note"><Icon name="info" size={14} /> Filled from your photo. Tap any hole to fix it.</div>}
       <div className="pad-holes">
         {course.holes.map((x, i) => (
           <button key={i} className={`pad-hole ${i === cur ? 'on' : ''}`} onClick={() => setCur(i)} aria-label={`Hole ${i + 1}`}>
@@ -108,6 +164,8 @@ export default function ScorePad({ open, onClose, entrant, course, onSave, readO
         <button className="btn ghost sm" disabled={cur === HOLES - 1} onClick={() => setCur(cur + 1)}>Next <Icon name="chev" size={16} /></button>
       </div>
       <p className="muted" style={{ fontSize: 11.5, textAlign: 'center', margin: '10px 0 0' }}>Your real score always counts for the league. Only your handicap caps a blow-up hole at net double bogey.</p>
+      {viewing && <PhotoLightbox path={entrant.photo} photoUrl={photoUrl} title={entrant.name} onClose={() => setViewing(false)}
+        onRemove={onRemovePhoto && !readOnly ? () => { if (confirm('Remove the photo from this card?')) { onRemovePhoto(); setViewing(false); } } : null} />}
     </Sheet>
   );
 }
