@@ -1,0 +1,242 @@
+{
+  "par": [
+    5,
+    4,
+    3,
+    4,
+    4,
+    5,
+    3,
+    4,
+    4
+  ],
+  "cases": [
+    {
+      "id": "colors-1p",
+      "file": "colors-1p.png",
+      "player": "Dee Okafor",
+      "scores": [
+        5,
+        4,
+        2,
+        5,
+        4,
+        6,
+        3,
+        4,
+        5
+      ],
+      "rows": [
+        "Dee Okafor"
+      ],
+      "multi": false,
+      "eighteen": false,
+      "crop": {
+        "x": 0.18625,
+        "y": 0.3416666666666667,
+        "w": 0.6275,
+        "h": 0.31666666666666665
+      }
+    },
+    {
+      "id": "shapes-4p",
+      "file": "shapes-4p.png",
+      "player": "Dee Okafor",
+      "scores": [
+        5,
+        4,
+        2,
+        5,
+        4,
+        6,
+        3,
+        4,
+        5
+      ],
+      "rows": [
+        "Marcus Bell",
+        "Dee Okafor",
+        "Tommy Reyes",
+        "Jules Whitaker"
+      ],
+      "multi": true,
+      "eighteen": false,
+      "crop": {
+        "x": 0.18625,
+        "y": 0.26,
+        "w": 0.6275,
+        "h": 0.48
+      }
+    },
+    {
+      "id": "colors-4p",
+      "file": "colors-4p.png",
+      "player": "Tommy Reyes",
+      "scores": [
+        4,
+        4,
+        3,
+        6,
+        5,
+        5,
+        2,
+        4,
+        4
+      ],
+      "rows": [
+        "Marcus Bell",
+        "Dee Okafor",
+        "Tommy Reyes",
+        "Jules Whitaker"
+      ],
+      "multi": true,
+      "eighteen": false,
+      "crop": {
+        "x": 0.18625,
+        "y": 0.26,
+        "w": 0.6275,
+        "h": 0.48
+      }
+    },
+    {
+      "id": "eighteen-2p",
+      "file": "eighteen-2p.png",
+      "player": "Dee Okafor",
+      "scores": [
+        5,
+        4,
+        2,
+        5,
+        4,
+        6,
+        3,
+        4,
+        5
+      ],
+      "rows": [
+        "Jules Whitaker",
+        "Dee Okafor"
+      ],
+      "multi": true,
+      "eighteen": true,
+      "crop": {
+        "x": 0.099375,
+        "y": 0.3227777777777778,
+        "w": 0.80125,
+        "h": 0.35444444444444445
+      }
+    },
+    {
+      "id": "skewed",
+      "file": "skewed.png",
+      "player": "Dee Okafor",
+      "scores": [
+        5,
+        4,
+        2,
+        5,
+        4,
+        6,
+        3,
+        4,
+        5
+      ],
+      "rows": [
+        "Dee Okafor",
+        "Marcus Bell"
+      ],
+      "multi": true,
+      "eighteen": false,
+      "crop": {
+        "x": 0.21125835418701172,
+        "y": 0.25094445122612846,
+        "w": 0.6303217697143555,
+        "h": 0.47630469428168404
+      }
+    },
+    {
+      "id": "blurry",
+      "file": "blurry.png",
+      "player": "Dee Okafor",
+      "scores": [
+        5,
+        4,
+        2,
+        5,
+        4,
+        6,
+        3,
+        4,
+        5
+      ],
+      "rows": [
+        "Dee Okafor"
+      ],
+      "multi": false,
+      "eighteen": false,
+      "crop": {
+        "x": 0.18625,
+        "y": 0.3416666666666667,
+        "w": 0.6275,
+        "h": 0.31666666666666665
+      }
+    },
+    {
+      "id": "screen-photo",
+      "file": "screen-photo.jpg",
+      "player": "Dee Okafor",
+      "scores": [
+        5,
+        4,
+        2,
+        5,
+        4,
+        6,
+        3,
+        4,
+        5
+      ],
+      "rows": [
+        "Dee Okafor",
+        "Tommy Reyes"
+      ],
+      "multi": true,
+      "eighteen": false,
+      "crop": {
+        "x": 0.22014671325683594,
+        "y": 0.32240756564670137,
+        "w": 0.58092529296875,
+        "h": 0.37549533420138886
+      }
+    },
+    {
+      "id": "screen-photo-hard",
+      "file": "screen-photo-hard.jpg",
+      "player": "Dee Okafor",
+      "scores": [
+        5,
+        4,
+        2,
+        5,
+        4,
+        6,
+        3,
+        4,
+        5
+      ],
+      "rows": [
+        "Marcus Bell",
+        "Dee Okafor",
+        "Tommy Reyes"
+      ],
+      "multi": true,
+      "eighteen": false,
+      "crop": {
+        "x": 0.19309259414672852,
+        "y": 0.2988876003689236,
+        "w": 0.5815908622741699,
+        "h": 0.4419809977213542
+      }
+    }
+  ]
+}
