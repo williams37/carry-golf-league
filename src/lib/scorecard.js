@@ -130,7 +130,7 @@ export function layoutRows(lines, header) {
       if (pr.along > spacing * (HOLES - 1) + spacing * 0.6) continue; // totals / to-par column
       if (numericToken(w.text)) items.push({ down: pr.down, numeric: true });
     }
-    if (labelWords.length) items.push({ down: median(labelWords.map((x) => x.pr.down)), label: labelWords.map((x) => x.w.text).join(' ').trim() });
+    if (labelWords.length) items.push({ down: median(labelWords.map((x) => x.pr.down)), label: labelWords.map((x) => x.w.text).join(' ').trim(), from: Math.min(...labelWords.map((x) => x.pr.along)) });
   }
   items.sort((a, b) => a.down - b.down);
   // cluster by vertical position
@@ -143,13 +143,14 @@ export function layoutRows(lines, header) {
   let rows = clusters.map((c) => {
     const labels = c.items.filter((i) => i.label).map((i) => i.label);
     const nums = c.items.filter((i) => i.numeric).length;
-    return { down: median(c.items.map((i) => i.down)), label: labels.join(' ').replace(/\s+/g, ' ').trim(), nums };
+    const froms = c.items.filter((i) => i.label).map((i) => i.from);
+    return { down: median(c.items.map((i) => i.down)), label: labels.join(' ').replace(/\s+/g, ' ').trim(), nums, from: froms.length ? Math.min(...froms) : null };
   }).filter((r) => r.label || r.nums >= 3);
   // merge rows that are suspiciously close (label and numbers split by perspective)
   const merged = [];
   for (const r of rows) {
     const p = merged[merged.length - 1];
-    if (p && r.down - p.down < charH * 1.05) { p.label = p.label || r.label; p.nums += r.nums; p.down = r.label ? r.down : p.down; } else merged.push({ ...r });
+    if (p && r.down - p.down < charH * 1.05) { p.label = p.label || r.label; p.from = p.from ?? r.from; p.nums += r.nums; p.down = r.label ? r.down : p.down; } else merged.push({ ...r });
   }
   rows = merged;
   if (!rows.length) return [];
@@ -159,19 +160,29 @@ export function layoutRows(lines, header) {
     const kind = classifyLabel(r.label);
     const cells = header.cols.map((c) => ({ x: c.x - dir.y * r.down, y: c.y + dir.x * r.down }));
     const total = { x: header.out.x - dir.y * r.down, y: header.out.y + dir.x * r.down };
-    return { label: r.label, kind, down: r.down, cells, total, w: spacing * 0.92, h: Math.min(rowH * 0.92, spacing * 1.2) };
+    return { label: r.label, kind, down: r.down, labelFrom: r.from, cells, total, w: spacing * 0.92, h: Math.min(rowH * 0.92, spacing * 1.2) };
   });
 }
 
+const STRUCT = { par: ['PAR'], header: ['HOLE', 'HOLES'], skip: ['INDEX', 'HCP', 'HDCP', 'HANDICAP', 'DISTANCE', 'YARDS', 'YARDAGE', 'YDS', 'METERS', 'STROKEINDEX', 'SI', 'TEE', 'TEES'] };
 export function classifyLabel(label) {
   const t = (label || '').trim();
-  const first = t.split(/\s+/)[0] || '';
+  const first = (t.split(/\s+/)[0] || '').replace(/[^a-z0-9]+$/i, '');
   if (!t) return 'unknown';
   if (PAR_LABEL.test(first)) return 'par';
   if (HOLE_LABEL.test(first)) return 'header';
   const bare = first.replace(/[^a-z.]/gi, '');
   if (SKIP_LABEL.test(bare)) return 'skip';
   if (/^(h?[ceo]p|h.p|hc|hd.?p|h[o0]t)$/i.test(bare)) return 'skip'; // OCR-mangled "HCP"
+  // fuzzy: "RAR"→PAR, "1NDEX"/"INDFX"→INDEX, "DlSTANCE"→DISTANCE (whole label, letters only)
+  const L = t.toUpperCase().replace(/[^A-Z]/g, '');
+  if (L.length >= 3) {
+    for (const [kind, words] of Object.entries(STRUCT)) for (const w of words) {
+      if (w.length < 5 && !(w === 'PAR' && /^[A-Z]AR$|^PA[A-Z]$/.test(t.toUpperCase()) && t === t.toUpperCase())) continue; // "Dee"≠TEE, but caps "RAR"→PAR
+      const tol = w.length <= 5 ? 1 : 2;
+      if (Math.abs(L.length - w.length) <= tol && lev(L, w) <= tol) return kind;
+    }
+  }
   if (bare.length < 3 && t.split(/\s+/).length === 1) return 'unknown';
   return 'player';
 }
@@ -184,20 +195,33 @@ export function classifyLabel(label) {
 export function assemble(rows, { coursePar } = {}) {
   let par = null;
   const players = [];
-  for (const r of rows) {
+  const filled = (r) => r.holes.filter((h) => h && Number.isFinite(h.value)).length;
+  for (const [ri, r] of rows.entries()) {
     const vals = r.holes.map((h) => (h && Number.isFinite(h.value) ? h.value : null));
     const known = vals.filter((v) => v != null);
     if (known.length < 5) continue;
+    const moreBelow = rows.slice(ri + 1).some((x) => filled(x) >= 6);
     const isPermutation = known.length >= 7 && new Set(known).size === known.length && known.every((v) => v >= 1 && v <= 18);
     const parLike = known.every((v) => v >= 3 && v <= 6) && (known.length < 9 || (sum(known) >= 27 && sum(known) <= 45));
     if (r.kind === 'header' || r.kind === 'skip') continue;
-    if (r.kind === 'par' || (r.kind === 'unknown' && !par && !players.length && parLike && coursePar && vals.every((v, k) => v == null || v === coursePar[k]))) {
+    const nameLike = r.kind === 'player' && looksLikeName(r.label);
+    // The first row under HOLE on every GSPro card is PAR: accept it by numbers when its label isn't a clear name.
+    const parByValues = !par && !players.length && parLike && known.length >= 7 && !nameLike && moreBelow && r.kind !== 'player';
+    const matchesCourse = coursePar && vals.filter((v, k) => v != null && v === coursePar[k]).length >= Math.min(7, known.length);
+    if (r.kind === 'par' || parByValues || (r.kind === 'unknown' && !par && !players.length && parLike && matchesCourse)) {
       if (!par) par = vals.map((v, k) => v ?? coursePar?.[k] ?? null);
       continue;
     }
     if (isPermutation) continue; // stroke-index row (all distinct 1–18) — no real round looks like that
+    // near-permutation (one misread) above the first player, without a name: still the INDEX row
+    // Near-permutation (OCR merged/misread a cell or two) that no round could produce against par: INDEX row.
+    const idx = known.filter((v) => v >= 1 && v <= 18);
+    const ref = par || coursePar;
+    const impossible = ref ? vals.filter((v, k) => v != null && (v === 1 || v <= ref[k] - 2 || v >= ref[k] + 4)).length : 0;
+    const nearPerm = idx.length >= 6 && new Set(idx).size >= idx.length - 2 && idx.some((v) => v <= 2) && idx.some((v) => v >= 7);
+    if (nearPerm && impossible >= 3 && !nameLike) continue;
     if (known.filter((v) => v > 15).length >= 3) continue; // yardage / distance row
-    players.push(scoreRow(r, par || coursePar));
+    players.push({ ...scoreRow(r, par || coursePar), down: r.down, shift: r.shift || 0, labelFrom: r.labelFrom });
   }
   return { par, players };
 }
@@ -225,8 +249,9 @@ function scoreRow(r, par) {
 }
 
 /** Fuzzy pick of the row matching the player's name; falls back to the best-quality row. */
-export function pickRow(players, name) {
+export function pickRow(players, name, id) {
   if (!players.length) return -1;
+  if (id) { const k = players.findIndex((p) => p.rosterId === id); if (k >= 0) return k; }
   if (name) {
     const toks = norm(name);
     let best = -1, bestScore = 0;
@@ -242,7 +267,7 @@ export function pickRow(players, name) {
   return -1; // ambiguous → user picks
 }
 const norm = (s) => String(s || '').toLowerCase().replace(/["“”'’]/g, '').split(/[^a-z0-9]+/).filter((t) => t.length > 1);
-function lev(a, b) {
+export function lev(a, b) {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
@@ -311,3 +336,63 @@ export function segment(nums) {
   }
   return best;
 }
+
+
+/** Does an OCR'd label plausibly read as a person's name (not "oswwwans", "RRs", "semsmeunucEun")? */
+export function looksLikeName(label, conf = null) {
+  const t = String(label || '').trim();
+  if (!t || t.length < 3 || t.length > 32) return false;
+  if (!/^[A-Za-z][A-Za-z .'’-]*$/.test(t)) return false;
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length > 4) return false;
+  for (const w of words) {
+    const L = w.replace(/[^A-Za-z]/g, '');
+    if (L.length < 2 && words.length === 1) return false;
+    if (/(.)\1\1/i.test(L)) return false;                       // "www"
+    if (/[^aeiouy]{5,}/i.test(L)) return false;                   // consonant soup
+    for (const run of L.match(/[^aeiouy]{4}/gi) || []) if (!/ch|sh|th|ck|gh|ph|sch|ng|st|tz|rt|ld/i.test(run)) return false; // "GKNV"
+    if (words.length === 1 && L.length > 9) return false;         // one 10+ letter blob is two names fused by OCR
+    const v = (L.match(/[aeiouy]/gi) || []).length / Math.max(1, L.length);
+    if (L.length >= 3 && (v < 0.12 || v > 0.8)) return false;
+    if (/[a-z][A-Z]/.test(L) && !/^(Mc|Mac|O|De|Di|Van|Le|La)[A-Z]/.test(L)) return false; // "meunucEun"
+  }
+  if (conf != null && conf < 55) return false;
+  return true;
+}
+
+const letters = (s) => String(s || '').toUpperCase().replace(/[^A-Z]/g, '');
+function nameSim(read, name) {
+  const a = letters(read), b = letters(name);
+  if (!a || !b) return 0;
+  let best = 1 - lev(a, b) / Math.max(a.length, b.length);
+  // a first or last name alone ("VIDRA", "Nick") also counts, a bit less
+  for (const part of String(name).split(/[\s"“”]+/).map(letters).filter((x) => x.length >= 3)) {
+    const sim = 1 - lev(a, part) / Math.max(a.length, part.length);
+    best = Math.max(best, sim * 0.92);
+  }
+  return best;
+}
+
+/**
+ * Match card rows to the league roster (+ this week's subs). Greedy best-first, one row per person.
+ * Sets p.rosterId / p.display / p.nameConf. Rows with no confident match keep a clean OCR label,
+ * or fall back to "Row N" — never OCR gibberish.
+ */
+export function matchRoster(players, roster = []) {
+  const pairs = [];
+  players.forEach((p, i) => roster.forEach((r, j) => pairs.push({ i, j, s: nameSim(p.label, r.name) })));
+  pairs.sort((x, y) => y.s - x.s);
+  const usedP = new Set(), usedR = new Set();
+  for (const { i, j, s } of pairs) {
+    if (s < 0.6 || usedP.has(i) || usedR.has(j)) continue;
+    usedP.add(i); usedR.add(j);
+    Object.assign(players[i], { rosterId: roster[j].id, display: roster[j].name, nameConf: Math.round(s * 100) });
+  }
+  players.forEach((p, i) => {
+    if (p.display) return;
+    p.display = looksLikeName(p.label, p.labelConf) ? tidyName(p.label) : `Row ${i + 1}`;
+    p.nameConf = p.display.startsWith('Row ') ? 0 : 50;
+  });
+  return players;
+}
+const tidyName = (s) => String(s).trim().replace(/\s+/g, ' ');

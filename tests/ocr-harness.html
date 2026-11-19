@@ -4,9 +4,10 @@ import { loadImage, scanScorecard } from '/src/lib/ocr.js';
 window.runScan = async (url, opts = {}) => {
   const blob = await (await fetch(url)).blob();
   const img = await loadImage(blob);
+  window.__nameDebug = [];
   const r = await scanScorecard(img, opts);
   if (r.preview) { window.lastPreview = r.preview.toDataURL('image/png'); }
-  return { players: r.players, par: r.par, method: r.method, ms: r.ms, quality: r.quality, debug: r.debug };
+  return { players: r.players.map(({ nameCanvas, ...p }) => p), par: r.par, method: r.method, ms: r.ms, quality: r.quality, debug: r.debug, names: window.__nameDebug };
 };
 window.ready = true;
 </script></body></html>

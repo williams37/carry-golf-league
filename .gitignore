@@ -11,3 +11,4 @@ playwright-report/
 samples/exported-from-single-file.xlsx
 .DS_Store
 .scratch/
+tests/fixtures/private/

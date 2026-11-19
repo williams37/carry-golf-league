@@ -237,6 +237,253 @@
         "w": 0.5815908622741699,
         "h": 0.4419809977213542
       }
+    },
+    {
+      "id": "projector-clean",
+      "file": "projector-clean.png",
+      "player": "JOSH WILLIAMS",
+      "scores": [
+        5,
+        4,
+        4,
+        6,
+        4,
+        4,
+        3,
+        5,
+        4
+      ],
+      "rows": [
+        "NICK VIDRA",
+        "SETH MCLAUGHLIN",
+        "JOSH WILLIAMS"
+      ],
+      "all": [
+        {
+          "name": "NICK VIDRA",
+          "s": [
+            5,
+            3,
+            4,
+            3,
+            3,
+            5,
+            3,
+            5,
+            7
+          ]
+        },
+        {
+          "name": "SETH MCLAUGHLIN",
+          "s": [
+            5,
+            5,
+            5,
+            4,
+            3,
+            6,
+            5,
+            4,
+            4
+          ]
+        },
+        {
+          "name": "JOSH WILLIAMS",
+          "s": [
+            5,
+            4,
+            4,
+            6,
+            4,
+            4,
+            3,
+            5,
+            4
+          ]
+        }
+      ],
+      "par": [
+        4,
+        3,
+        4,
+        4,
+        3,
+        5,
+        3,
+        4,
+        5
+      ],
+      "multi": true,
+      "crop": {
+        "x": 0.171875,
+        "y": 0.24666666666666667,
+        "w": 0.65625,
+        "h": 0.5066666666666667
+      },
+      "strict": true
+    },
+    {
+      "id": "projector-photo",
+      "file": "projector-photo.jpg",
+      "player": "JOSH WILLIAMS",
+      "scores": [
+        5,
+        4,
+        4,
+        6,
+        4,
+        4,
+        3,
+        5,
+        4
+      ],
+      "rows": [
+        "NICK VIDRA",
+        "SETH MCLAUGHLIN",
+        "JOSH WILLIAMS"
+      ],
+      "all": [
+        {
+          "name": "NICK VIDRA",
+          "s": [
+            5,
+            3,
+            4,
+            3,
+            3,
+            5,
+            3,
+            5,
+            7
+          ]
+        },
+        {
+          "name": "SETH MCLAUGHLIN",
+          "s": [
+            5,
+            5,
+            5,
+            4,
+            3,
+            6,
+            5,
+            4,
+            4
+          ]
+        },
+        {
+          "name": "JOSH WILLIAMS",
+          "s": [
+            5,
+            4,
+            4,
+            6,
+            4,
+            4,
+            3,
+            5,
+            4
+          ]
+        }
+      ],
+      "par": [
+        4,
+        3,
+        4,
+        4,
+        3,
+        5,
+        3,
+        4,
+        5
+      ],
+      "multi": true,
+      "crop": {
+        "x": 0.17189800262451171,
+        "y": 0.2393038770887587,
+        "w": 0.6337289810180664,
+        "h": 0.500775400797526
+      },
+      "strict": true
+    },
+    {
+      "id": "real-gspro-1",
+      "file": "../private/real-gspro-1.jpg",
+      "optional": true,
+      "player": "JOSH WILLIAMS",
+      "scores": [
+        5,
+        4,
+        4,
+        6,
+        4,
+        4,
+        3,
+        5,
+        4
+      ],
+      "rows": [
+        "NICK VIDRA",
+        "SETH MCLAUGHLIN",
+        "JOSH WILLIAMS"
+      ],
+      "all": [
+        {
+          "name": "NICK VIDRA",
+          "s": [
+            5,
+            3,
+            4,
+            3,
+            3,
+            5,
+            3,
+            5,
+            7
+          ]
+        },
+        {
+          "name": "SETH MCLAUGHLIN",
+          "s": [
+            5,
+            5,
+            5,
+            4,
+            3,
+            6,
+            5,
+            4,
+            4
+          ]
+        },
+        {
+          "name": "JOSH WILLIAMS",
+          "s": [
+            5,
+            4,
+            4,
+            6,
+            4,
+            4,
+            3,
+            5,
+            4
+          ]
+        }
+      ],
+      "par": [
+        4,
+        3,
+        4,
+        4,
+        3,
+        5,
+        3,
+        4,
+        5
+      ],
+      "multi": true,
+      "strict": true
     }
   ]
 }

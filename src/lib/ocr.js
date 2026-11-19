@@ -1,6 +1,6 @@
 // Browser OCR pipeline for GSPro-style scorecard photos. Everything runs on-device; Tesseract is
 // lazy-loaded from self-hosted assets (public/ocr) the first time someone scans a card.
-import { findHeader, layoutRows, assemble, parseText, flattenBlocks, numericToken, HOLES } from './scorecard.js';
+import { findHeader, layoutRows, assemble, parseText, flattenBlocks, numericToken, HOLES, looksLikeName, matchRoster } from './scorecard.js';
 
 const CDN = { worker: 'https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/worker.min.js', core: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0', lang: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng/4.0.0_best_int' };
 function assetPaths() {
@@ -160,7 +160,7 @@ export function cellInk({ gray, w, h }, charH, ring = 0.69) {
 }
 
 /** Connected components on an ink map (0 = ink). Keeps glyph-like blobs, drops frames/rings/specks/edges. */
-export function glyphs(ink, charH) {
+export function glyphs(ink, charH, gap = 0.45) {
   const { gray, w, h } = ink; const lab = new Int32Array(w * h).fill(-1); const comps = [];
   const stack = [];
   for (let s = 0; s < w * h; s++) {
@@ -191,7 +191,7 @@ export function glyphs(ink, charH) {
   // nearest-to-center group (max 2 digits, adjacent)
   keep.sort((a, b) => a.x0 - b.x0);
   const cx = w / 2;
-  const groups = []; for (const c of keep) { const g = groups[groups.length - 1]; if (g && c.x0 - g[g.length - 1].x1 < charH * 0.45) g.push(c); else groups.push([c]); }
+  const groups = []; for (const c of keep) { const g = groups[groups.length - 1]; if (g && c.x0 - g[g.length - 1].x1 < charH * gap) g.push(c); else groups.push([c]); }
   const dist = (g) => Math.abs((g[0].x0 + g[g.length - 1].x1) / 2 - cx);
   const best = groups.sort((a, b) => dist(a) - dist(b))[0];
   if (dist(best) > w * 0.38) return null;
@@ -240,16 +240,101 @@ function mergeGrids(grids, charH) {
       if (!isTotal) { const ok = vals.filter((v) => v.value >= 1 && v.value <= 15); if (ok.length) vals = ok; }
       if (!vals.length) return null;
       const votes = new Map(); for (const v of vals) votes.set(v.value, (votes.get(v.value) || 0) + 1);
-      return vals.map((v) => ({ ...v, conf: Math.min(99, v.conf + (votes.get(v.value) - 1) * 8) })).sort((a, b) => b.conf - a.conf)[0];
+      // Independent passes agreeing is better evidence than Tesseract's per-glyph confidence on re-rendered digits.
+      const agree = (v) => { const n = votes.get(v.value); return n === vals.length && n >= 3 ? 80 : n === vals.length && n >= 2 ? 65 : 0; };
+      return vals.map((v) => ({ ...v, conf: Math.min(99, Math.max(agree(v), v.conf + (votes.get(v.value) - 1) * 8)) })).sort((a, b) => b.conf - a.conf)[0];
     };
     const label = twins.map((t) => t.label).sort((a, b) => labelScore(b) - labelScore(a))[0] || '';
     const kinds = twins.map((t) => t.kind);
     const kind = ['par', 'skip', 'header'].find((k) => kinds.includes(k)) || (kinds.includes('player') ? 'player' : row.kind);
-    return { label, kind, down: row.down, holes: row.holes.map((_, k) => pickCell((t) => t.holes[k])), total: pickCell((t) => t.total, true) };
+    const froms = twins.map((t) => t.labelFrom).filter((v) => v != null);
+    const holes = row.holes.map((_, k) => pickCell((t) => t.holes[k]));
+    // OUT total: a pass that read exactly the sum of the merged holes wins (it's the card's own checksum).
+    const s9 = holes.every(Boolean) ? holes.reduce((a, h) => a + h.value, 0) : null;
+    const tot = twins.map((t) => t.total).filter(Boolean);
+    const total = (s9 != null && tot.find((t) => t.value === s9)) || pickCell((t) => t.total, true);
+    return { label, kind, down: row.down, shift: row.shift, labelFrom: froms.length ? Math.min(...froms) : null, holes, total };
   });
 }
 
 const SLOT_W = 150, SLOT_H = 110, GLYPH_H = 52;
+const letterKey = (s) => String(s || '').toUpperCase().replace(/[^A-Z]/g, '');
+const nameQuality = (p) => (looksLikeName(p.label, p.labelConf) ? 100 + (p.labelConf || 0) : (p.labelConf || 0) / 10);
+
+/**
+ * Read one player's name from its own crop: the strip between the label start and hole 1. Keep only
+ * text-height, high-contrast strokes (drops the grey avatar icon, frame lines, wrinkles), redraw them
+ * black-on-white at a fixed large size, and OCR as a single line of letters.
+ */
+async function readName(view, gray, header, p) {
+  const { cols, dir, spacing, charH } = header;
+  const angle = Math.atan2(dir.y, dir.x);
+  const down = p.down + (p.shift || 0);
+  const a1 = -spacing * 0.62, a0 = Math.max(-spacing * 7.5, Math.min(p.labelFrom ?? 0, -spacing * 4.5) - charH * 3);
+  const mid = (a0 + a1) / 2;
+  const cx = cols[0].x + dir.x * mid - dir.y * down, cy = cols[0].y + dir.y * mid + dir.x * down;
+  const cell = cutCell(grayCanvas(gray), cx, cy, a1 - a0, charH * 2.2, angle);
+  const { w, h, gray: g } = cell;
+  const sorted = Array.from(g).sort((x, y) => x - y); const bg = sorted[sorted.length >> 1];
+  const dev = new Uint8ClampedArray(w * h); const hist = new Uint32Array(256);
+  for (let j = 0; j < g.length; j++) { dev[j] = Math.min(255, Math.abs(g[j] - bg)); hist[dev[j]]++; }
+  let acc = 0, peak = 255; for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc >= g.length * 0.02) { peak = v; break; } }
+  const t = Math.max(36, otsu(hist, g.length), peak * 0.45);
+  // connected components (8-neighbour)
+  const lab = new Int32Array(w * h).fill(-1); const comps = [];
+  for (let j = 0; j < lab.length; j++) {
+    if (dev[j] <= t || lab[j] >= 0) continue;
+    const c = { x0: w, x1: 0, y0: h, y1: 0, n: 0, sum: 0, px: [] }; const st = [j]; lab[j] = comps.length;
+    while (st.length) {
+      const q = st.pop(); const x = q % w, y = (q / w) | 0;
+      c.n++; c.sum += dev[q]; c.px.push(q); if (x < c.x0) c.x0 = x; if (x > c.x1) c.x1 = x; if (y < c.y0) c.y0 = y; if (y > c.y1) c.y1 = y;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const k = ny * w + nx; if (lab[k] < 0 && dev[k] > t) { lab[k] = comps.length; st.push(k); }
+      }
+    }
+    comps.push(c);
+  }
+  const mid0 = h / 2;
+  let keep = comps.filter((c) => {
+    const ch = c.y1 - c.y0 + 1, cw = c.x1 - c.x0 + 1;
+    if (c.n < Math.max(4, charH * charH * 0.01)) return false;
+    if (c.y0 <= 0 || c.y1 >= h - 1 || c.x0 <= 0 || c.x1 >= w - 1) return false; // frame lines, neighbouring rows, card edge
+    if (ch > charH * 1.4 || cw > charH * 2.2) return false;        // avatar disc, box edges
+    if (Math.abs((c.y0 + c.y1) / 2 - mid0) > charH * 0.75) return false;
+    return ch >= charH * 0.2;
+  });
+  if (!keep.length) return null;
+  // Letters are the darkest strokes in the strip; the avatar silhouette is mid-grey.
+  const contrast = keep.map((c) => c.sum / c.n); const top = Math.max(...contrast);
+  keep = keep.filter((c, i) => contrast[i] >= top * 0.62);
+  // letters-sized only (relative to the tallest letters present), then the longest run of close glyphs
+  const capH = Math.max(...keep.map((c) => c.y1 - c.y0 + 1));
+  keep = keep.filter((c) => c.y1 - c.y0 + 1 >= capH * 0.25).sort((a, b) => a.x0 - b.x0);
+  const runs = []; for (const c of keep) { const r = runs[runs.length - 1]; if (r && c.x0 - r.x1 < capH * 1.5) { r.cs.push(c); r.x1 = Math.max(r.x1, c.x1); } else runs.push({ cs: [c], x1: c.x1 }); }
+  const run = runs.sort((a, b) => b.cs.reduce((s, c) => s + c.n, 0) - a.cs.reduce((s, c) => s + c.n, 0))[0].cs;
+  if (run.length < 2) return null;
+  const x0 = Math.min(...run.map((c) => c.x0)), x1 = Math.max(...run.map((c) => c.x1));
+  const y0 = Math.min(...run.map((c) => c.y0)), y1 = Math.max(...run.map((c) => c.y1));
+  const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+  const ink = document.createElement('canvas'); ink.width = bw; ink.height = bh;
+  const ix = ink.getContext('2d'); const id = ix.createImageData(bw, bh);
+  id.data.fill(255);
+  for (const c of run) for (const q of c.px) {
+    const x = (q % w) - x0, y = ((q / w) | 0) - y0; const o = (y * bw + x) * 4;
+    const v = 255 - Math.min(255, ((dev[q] - t * 0.5) / Math.max(1, peak - t * 0.5)) * 255);
+    id.data[o] = id.data[o + 1] = id.data[o + 2] = Math.max(0, v);
+  }
+  ix.putImageData(id, 0, 0);
+  const scale = 48 / capH, pad = 28;
+  const out = document.createElement('canvas'); out.width = Math.round(bw * scale) + pad * 2; out.height = Math.round(bh * scale) + pad * 2;
+  const ox = out.getContext('2d'); ox.fillStyle = '#fff'; ox.fillRect(0, 0, out.width, out.height);
+  ox.imageSmoothingEnabled = true; ox.imageSmoothingQuality = 'high'; ox.drawImage(ink, pad, pad, bw * scale, bh * scale);
+  const d = await recognize(out, { tessedit_pageseg_mode: '7', tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .'-", preserve_interword_spaces: '1' });
+  const text = (d.text || '').replace(/\s+/g, ' ').trim();
+  if (typeof window !== 'undefined' && window.__nameDebug) window.__nameDebug.push(out.toDataURL());
+  return { text, conf: Math.round(d.confidence || 0) };
+}
 
 /**
  * Read the grid: cut every cell, extract its glyphs, re-render a clean table, OCR it once (digits only).
@@ -263,13 +348,14 @@ async function readGrid(view, gray, header, rows) {
   const sx = sheet.getContext('2d'); sx.fillStyle = '#fff'; sx.fillRect(0, 0, sheet.width, sheet.height);
   const src = grayCanvas(gray);
   const present = rows.map(() => Array(cols).fill(false));
+  const shifts = rows.map(() => 0);
   const extract = (p, ci, r) => {
     const wide = ci === HOLES ? 1.25 : 1;
     const cell = cutCell(src, p.x, p.y, Math.min(r.w * wide, charH * 3.4 * wide), Math.min(r.h, charH * 2.3), angle);
     // Several background hypotheses (glyph inside a small box vs. on open card); keep the most digit-like.
     let ink = null, g = null, bestS = -Infinity;
     for (const ring of [0.69, 0.52, 0.4, 0.88]) {
-      const k = cellInk(cell, charH, ring); const gg = glyphs(k, charH); if (!gg) continue;
+      const k = cellInk(cell, charH, ring); const gg = glyphs(k, charH, ci === HOLES ? 0.8 : 0.45); if (!gg) continue;
       const sc = glyphScore(gg, k, charH); if (sc > bestS) { bestS = sc; ink = k; g = gg; }
     }
     if (!g) return null;
@@ -282,6 +368,7 @@ async function readGrid(view, gray, header, rows) {
     // Re-centre the row on its glyphs (row positions from labels drift a few px), then read again.
     const dys = got.filter(Boolean).map((x) => x.dy).sort((a, b) => a - b);
     const shift = dys.length >= 4 ? dys[dys.length >> 1] : 0;
+    shifts[ri] = shift;
     if (Math.abs(shift) > charH * 0.1) {
       const nx = -Math.sin(angle) * shift, ny = Math.cos(angle) * shift;
       pts = pts.map((p) => ({ x: p.x + nx, y: p.y + ny }));
@@ -295,7 +382,7 @@ async function readGrid(view, gray, header, rows) {
     });
   });
   const data = await recognize(sheet, { tessedit_pageseg_mode: '6', tessedit_char_whitelist: '0123456789' });
-  const out = rows.map((r) => ({ label: r.label, kind: r.kind, holes: Array(HOLES).fill(null), total: null }));
+  const out = rows.map((r, ri) => ({ label: r.label, kind: r.kind, labelFrom: r.labelFrom, shift: shifts[ri], holes: Array(HOLES).fill(null), total: null }));
   for (const l of flattenBlocks(data.blocks)) for (const w of l.words) for (const s of splitWord(w)) {
     const cx = (s.bbox.x0 + s.bbox.x1) / 2 - 20, cy = (s.bbox.y0 + s.bbox.y1) / 2 - 20;
     const ci = Math.floor(cx / SLOT_W), ri = Math.floor(cy / SLOT_H);
@@ -367,7 +454,7 @@ export async function scanScorecard(img, opts = {}) {
         debug[debug.length - 1].rows = rows.map((r) => ({ label: r.label, kind: r.kind, down: Math.round(r.down) }));
         debug[debug.length - 1].grid = grid.rows.map((r) => r.holes.map((h) => h?.value ?? '·').join(',') + ' | ' + (r.total?.value ?? '·'));
         const q = res.players.length ? Math.max(...res.players.map((p) => p.quality)) : 0;
-        best = { ...res, method: 'grid', quality: q, preview: grid.sheet, table: tableCorners(header, rows) }; // merged result supersedes earlier passes
+        best = { ...res, method: 'grid', quality: q, preview: grid.sheet, table: tableCorners(header, rows), header }; // merged result supersedes earlier passes
         const missing = res.players.some((p) => p.flags.some(Boolean)) || res.players.some((p) => p.totalOk === null);
         if (q >= 80 && !missing) break;
         continue;
@@ -378,6 +465,14 @@ export async function scanScorecard(img, opts = {}) {
     const q = res.players.length ? Math.max(...res.players.map((p) => p.quality)) * 0.85 : 0;
     if (!best || q > best.quality) best = { ...res, method: 'text', quality: q, preview: null };
   }
+  if (best?.method === 'grid' && best.header) {
+    step('Reading names', 84);
+    for (const p of best.players) {
+      const nm = await readName(view, gray, best.header, p).catch(() => null);
+      p.labelAlt = p.label;
+      if (nm?.text) { p.label = nm.text; p.labelConf = nm.conf; }
+    }
+  }
   // Auto-zoom: if the table is small in the frame, re-read just that region at higher resolution.
   if (!opts._zoomed && best?.table) {
     const z = zoomCrop(best.table, view, crop);
@@ -385,21 +480,26 @@ export async function scanScorecard(img, opts = {}) {
       step('Zooming in', 86);
       const again = await scanScorecard(img, { ...opts, crop: z, _zoomed: true, onProgress: (st, pc) => step(st, Math.min(99, 86 + pc / 8)) });
       debug.push({ zoom: z, zoomQuality: again.quality, baseQuality: best.quality, zoomPlayers: again.players.length, zoomDebug: again.debug.map(({ text, ...r }) => r) });
-      if (evidence(again) >= evidence(best)) { again.debug = [...debug, ...again.debug]; again.zoom = z; again.ms = Math.round(performance.now() - t0); return again; }
+      if (evidence(again) >= evidence(best)) {
+        // names: keep whichever pass read them more cleanly
+        again.players.forEach((p) => { const twin = best.players.find((b) => b.holes.join() === p.holes.join()); if (twin && (nameQuality(twin) > nameQuality(p) || (looksLikeName(twin.label) && letterKey(twin.label).length > letterKey(p.label).length && letterKey(twin.label).endsWith(letterKey(p.label))))) Object.assign(p, { label: twin.label, labelConf: twin.labelConf, labelAlt: twin.labelAlt }); });
+        matchRoster(again.players.map((p) => { delete p.display; delete p.rosterId; return p; }), opts.roster || []); again.debug = [...debug, ...again.debug]; again.zoom = z; again.ms = Math.round(performance.now() - t0); return again; }
     }
   }
   step('Done', 100);
   progressCb = null;
-  return { ...(best || { players: [], par: null, method: 'none', quality: 0 }), ms: Math.round(performance.now() - t0), debug };
+  const { header: _h, ...result } = best || { players: [], par: null, method: 'none', quality: 0 };
+  matchRoster(result.players, opts.roster || []);
+  return { ...result, ms: Math.round(performance.now() - t0), debug };
 }
 
 /** Structural evidence a read is right: cells read, OUT checksums that match, few flags. */
-const evidence = (r) => (r?.players || []).reduce((a, p) => a + p.holes.filter((v) => v != null).length + (p.totalOk ? 6 : p.totalOk === false ? -1 : 0) - p.flags.filter(Boolean).length * 0.5, 0);
+const evidence = (r) => (r?.par ? 3 : 0) + (r?.players || []).reduce((a, p) => a + p.holes.filter((v) => v != null).length + (p.totalOk ? 6 : p.totalOk === false ? -1 : 0) - p.flags.filter(Boolean).length * 0.5, 0);
 
 function tableCorners(header, rows) {
   const { cols, spacing, dir, charH, out } = header; const last = rows[rows.length - 1];
   const down = (last?.down || charH * 3) + charH * 3, n = { x: -dir.y, y: dir.x };
-  const left = { x: cols[0].x - dir.x * spacing * 4.6, y: cols[0].y - dir.y * spacing * 4.6 };
+  const left = { x: cols[0].x - dir.x * spacing * 4.6, y: cols[0].y - dir.y * spacing * 4.6 }; // name column (wider costs cell resolution)
   const right = { x: out.x + dir.x * spacing * 1.6, y: out.y + dir.y * spacing * 1.6 };
   const up = charH * 3;
   return [left, right].flatMap((p) => [{ x: p.x - n.x * up, y: p.y - n.y * up }, { x: p.x + n.x * down, y: p.y + n.y * down }]);

@@ -6,7 +6,7 @@ import { PhotoLightbox, PhotoThumb } from './CardPhoto.jsx';
 const ScanFlow = lazy(() => import('./ScanCard.jsx'));
 
 /** Thumb-friendly hole-by-hole entry. Tap a score → auto-advance. Keyboard digits work too. */
-export default function ScorePad({ open, onClose, entrant, course, onSave, readOnly, cloud, photoUrl, onDelete, onRemovePhoto }) {
+export default function ScorePad({ open, onClose, entrant, course, onSave, readOnly, cloud, photoUrl, onDelete, onRemovePhoto, roster }) {
   const [holes, setHoles] = useState(() => entrant?.holes?.slice() || Array(HOLES).fill(null));
   const [cur, setCur] = useState(0);
   const [bump, setBump] = useState(0);
@@ -70,7 +70,7 @@ export default function ScorePad({ open, onClose, entrant, course, onSave, readO
   if (scan) return (
     <Sheet open={open} onClose={() => setScan(false)} title={<span className="row" style={{ gap: 8, minWidth: 0 }}><Icon name="scan" size={18} style={{ flex: 'none' }} /><span className="ellipsis">Scan card · {entrant.name}</span></span>} subtitle={`${course.name} · par ${course.holes.reduce((a, x) => a + x.par, 0)}`}>
       <Suspense fallback={<div className="scan-stage skeleton" />}>
-        <ScanFlow entrant={entrant} course={course} cloud={cloud} onUse={useScan} onCancel={() => setScan(false)} />
+        <ScanFlow entrant={entrant} course={course} cloud={cloud} roster={roster} onUse={useScan} onCancel={() => setScan(false)} />
       </Suspense>
     </Sheet>
   );

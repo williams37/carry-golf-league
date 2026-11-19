@@ -30,6 +30,8 @@ export default function Week({ ctx }) {
 
   const st = weekState(league, week, derived.hcp);
   const { ents, course } = st;
+  // Names a scanned card can be matched to: this week's players and subs, then the rest of the league.
+  const roster = [...ents.map((e) => ({ id: e.key, name: e.name })), ...league.players.filter((p) => !ents.some((e) => e.name === p.name)).map((p) => ({ id: 'league:' + p.id, name: p.name }))];
   const teams = teamResults(league, week, ents);
   const skins = weekSkins(league, week, ents);
   const skinHoles = {};
@@ -122,7 +124,7 @@ export default function Week({ ctx }) {
       )}
 
       <ScorePad open={!!pad} entrant={pad && (ents.find((x) => x.key === pad.key) || pad)} course={course} onClose={() => setPad(null)} onSave={save} readOnly={pad && !canEditScore(pad.key)}
-        cloud={mode === 'cloud'} photoUrl={photoUrl} onDelete={isCommissioner ? del : null}
+        cloud={mode === 'cloud'} photoUrl={photoUrl} onDelete={isCommissioner ? del : null} roster={roster}
         onRemovePhoto={pad ? () => { removePhoto(week.id, pad.key); toast('Photo removed'); } : null} />
       {viewPhoto && <PhotoLightbox path={viewPhoto.photo} photoUrl={photoUrl} title={`${viewPhoto.name} · Week ${week.number}`} onClose={() => setViewPhoto(null)} />}
       <SubSheet ctx={ctx} week={week} entrant={subFor} onClose={() => setSubFor(null)} />

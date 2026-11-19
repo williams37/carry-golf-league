@@ -10,7 +10,10 @@ const sum = (a) => a.reduce((x, y) => x + (y || 0), 0);
  * Steps: pick → adjust (rotate/crop) → reading → review. Nothing is saved here: "Use these scores"
  * hands the holes (and the compressed photo) back to the pad, where the player still taps Save.
  */
-export default function ScanFlow({ entrant, course, cloud, onUse, onCancel }) {
+/** Roster name when matched, a clean OCR name otherwise, else "Row N". Never raw OCR noise. */
+const rowName = (r, k) => r.display || `Row ${k + 1}`;
+
+export default function ScanFlow({ entrant, course, cloud, roster = [], onUse, onCancel }) {
   const [step, setStep] = useState('pick');
   const [file, setFile] = useState(null);
   const [img, setImg] = useState(null);
@@ -51,10 +54,10 @@ export default function ScanFlow({ entrant, course, cloud, onUse, onCancel }) {
     setStep('reading'); setProgress({ stage: 'Loading reader', pct: 2 });
     try {
       const m = await lib();
-      const r = await m.scanScorecard(img, { rotate, crop: isFull(crop) ? null : crop, coursePar, onProgress: (stage, pct) => setProgress({ stage, pct }) });
+      const r = await m.scanScorecard(img, { rotate, crop: isFull(crop) ? null : crop, coursePar, roster, onProgress: (stage, pct) => setProgress({ stage, pct }) });
       if (!r.players.length) { setError('nothing'); setStep('error'); return; }
       setResult(r);
-      const k = pickRow(r.players, entrant.name);
+      const k = pickRow(r.players, entrant.name, entrant.key);
       choose(r, k);
       setStep('review');
     } catch (e) {
@@ -151,7 +154,9 @@ export default function ScanFlow({ entrant, course, cloud, onUse, onCancel }) {
   const complete = cells.every((v) => v >= 1);
   const out = p?.total ?? null;
   const parRead = result.par && result.par.every(Boolean) ? sum(result.par) : null;
-  const parMismatch = result.par && result.par.some((v, k) => v && v !== coursePar[k]);
+  // One misread par digit isn't worth a warning; a different total or 2+ holes off is.
+  const parOff = result.par ? result.par.filter((v, k) => v && v !== coursePar[k]).length : 0;
+  const parMismatch = parOff >= 2 || (parRead != null && parRead !== sum(coursePar));
   const flagged = p ? p.flags.filter(Boolean).length : 0;
   return (
     <div className="scan" data-testid="scan-review">
@@ -159,7 +164,7 @@ export default function ScanFlow({ entrant, course, cloud, onUse, onCancel }) {
         <div className="scan-thumb">{preview && <img src={preview} alt="Your scorecard photo" style={cropStyle(crop)} />}</div>
         <div className="grow" style={{ minWidth: 0 }}>
           <div className="eyebrow">{result.players.length > 1 ? `${result.players.length} rows found` : 'Card read'}</div>
-          <div style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{p ? (p.label || entrant.name) : 'Whose row is yours?'}</div>
+          <div style={{ fontWeight: 700, fontSize: 15, marginTop: 2 }}>{p ? rowName(p, row) : 'Whose row is yours?'}</div>
           <div className="muted" style={{ fontSize: 12 }}>{p ? (flagged ? `${flagged} hole${flagged > 1 ? 's' : ''} to double-check` : 'Everything looks right, but check it anyway') : 'Tap your name below'}</div>
         </div>
       </div>
@@ -168,7 +173,7 @@ export default function ScanFlow({ entrant, course, cloud, onUse, onCancel }) {
         <div className="chips scan-rows" role="tablist" aria-label="Rows on the card">
           {result.players.map((r, k) => (
             <button key={k} className={`chip ${k === row ? 'on' : ''}`} onClick={() => choose(result, k)} data-testid="scan-row">
-              {r.label && r.label.length > 1 ? r.label : `Row ${k + 1}`} <span className="num" style={{ opacity: .65 }}>{sum(r.holes) || ''}</span>
+              <span className="chip-name">{rowName(r, k)}</span>{sum(r.holes) ? <span className="num chip-total"> · {sum(r.holes)}</span> : null}
             </button>
           ))}
         </div>
@@ -198,7 +203,7 @@ export default function ScanFlow({ entrant, course, cloud, onUse, onCancel }) {
             : <span className="warn"><Icon name="info" size={14} /> The card's OUT total says {out}. Check the highlighted holes.</span>)}
           {out == null && complete && <span>Compare with the total on the screen before you use it.</span>}
           {!complete && <span className="warn">Fill in the empty holes by hand.</span>}
-          {parMismatch && <div className="warn" style={{ marginTop: 4 }}><Icon name="info" size={14} /> The card's par{parRead ? ` (${parRead})` : ''} doesn't match {course.name} (par {sum(coursePar)}). Is this the right week?</div>}
+          {parMismatch && <div className="scan-note" data-testid="par-note"><Icon name="info" size={13} /> Heads up: this card shows par {parRead ?? '—'}, and {course.name} is set to par {sum(coursePar)}. Your scores are fine either way. If the card is from another course, check you picked the right week.</div>}
         </div>
       </div>
 
