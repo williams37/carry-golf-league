@@ -93,6 +93,16 @@ Then add that URL to the Supabase Site URL and Redirect URLs (step 2 above).
 3. Push. `.github/workflows/deploy.yml` tests, builds (with `BASE_PATH=/<repo>/`), and publishes `dist/` plus a `404.html` that sends deep links like `/carry-golf-league/join/CODE` to the app's `#/join/CODE` route, (already pointed at Carry Cloud; repo variables `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` override it).
 4. Put the Pages URL in Supabase's Site URL and Redirect URLs (dashboard step 2).
 
+## GSPro course library
+
+Commissioners can pick from **~3,100 GSPro courses** instead of typing one in: Courses → **Add course**, or **Find a GSPro course** in a week's settings.
+
+* **Data.** `public/courses.json` (~125 KB gzipped) is built by `scripts/sync-courses.mjs` from [Simulator Golf Tour's course list](https://simulatorgolftour.com/courses/) (id, name, location, par, GSPro difficulty 0–10, designer, updated). [PakGolf Studios' GSPro course list](https://pakgolfstudios.com/gspro-course-list/) adds country, style flags (links, parkland, …) and courses that exist only on private servers. Each source gets one request a week with an identifying user agent.
+* **Updates.** `.github/workflows/sync-courses.yml` runs Mondays (and on demand: Actions → *Sync GSPro course library* → Run workflow). It commits only when the list changed, then triggers the Pages deploy. If SGT's page layout changes or the count drops by more than 20%, the job fails and the old file stays. If PakGolf fails, the SGT list still ships.
+* **In the app.** The list is lazy-loaded the first time the picker opens and cached by the service worker (stale-while-revalidate), so it works offline after that. Search is fuzzy across name, location and designer (typos OK), with 9/18-hole, difficulty and real-vs-fictional filters.
+* **Rating & slope.** SGT doesn't publish them as data, so the picker shows SGT's scorecard image and the commissioner copies the tee's rating/slope, pars and index for the chosen nine. 9-hole values follow WHS: **slope stays the same; rating = nine par + (18-hole rating − 18-hole par) ÷ 2**. Until then, Carry uses its difficulty estimate, labelled *Estimated from GSPro difficulty*. Pars are always editable, since SGT's par can be off for 9-hole designs. The finished course is saved in the league (Supabase in cloud mode), so it's entered once per league. Manual entry is still there.
+* **Credit.** Course list courtesy of Simulator Golf Tour; styles and private-server courses from PakGolf Studios. Shown in the picker and on the Rules page.
+
 ## Scorecard photos
 
 **How the reader works** (`src/lib/ocr.js` + `src/lib/scorecard.js`). Everything runs in the browser with [tesseract.js](https://github.com/naptha/tesseract.js). Its worker, WebAssembly core and English model (~7 MB) are self-hosted in `public/ocr/` and fetched only the first time someone scans. After that the service worker caches them, so scanning works offline.
@@ -113,10 +123,12 @@ Then add that URL to the Supabase Site URL and Redirect URLs (step 2 above).
 ## Testing
 
 ```bash
-npm test                         # 49 unit tests (golf math, Excel, share, scorecard parser + grid geometry)
+npm test                         # 58 unit tests (golf math, Excel, share, scorecard parser + grid geometry)
 npm run build && npx vite preview --port 4173 &
 node scripts/screenshots.mjs     # demo screenshots + layout/overflow checks, single-file smoke test
 node scripts/photo-e2e.mjs       # scan flow through the real UI at 390/360 px, 36 checks → screenshots/photo-*.png
+node scripts/sync-courses.mjs    # refresh public/courses.json (what the weekly Action runs)
+node scripts/courses-e2e.mjs     # course picker through the real UI → screenshots/courses-*.png
 node scripts/ocr-accuracy.mjs    # real in-browser OCR over tests/fixtures/scorecards (regenerate: scripts/make-scorecards.mjs)
 # live cloud tests: confirmed users carry.e2e+{commish,dee,sam,out}@example.com with one password
 VITE_SUPABASE_URL=… VITE_SUPABASE_ANON_KEY=… E2E_PW=… node scripts/e2e-cloud.mjs          # 26 checks

@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Icon, Avatar, Strip, Sheet, fmtIdx, fmtHcp, shortName, Empty, Switch } from '../components/ui.jsx';
 import ScorePad from './ScorePad.jsx';
 import { PhotoLightbox, PhotoThumb } from './CardPhoto.jsx';
+import { CourseSheet, blankCourse } from './Courses.jsx';
 import { weekState, fmtDate } from '../lib/helpers.js';
 import { teamResults, weekSkins, generateTeams, repeatPartners, sortedWeeks, subKey, strokesOnHole, playerById } from '../lib/golf.js';
+const CoursePicker = lazy(() => import('./CoursePicker.jsx'));
 
 const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5', 'Team 6'];
 
@@ -200,6 +202,8 @@ function SubSheet({ ctx, week, entrant, onClose }) {
 function WeekSheet({ ctx, week, onClose }) {
   const { league, mutate, toast, go, deleteWeekData } = ctx;
   const [f, setF] = useState(null);
+  const [find, setFind] = useState(false);
+  const [editCourse, setEditCourse] = useState(null);
   useEffect(() => setF(week ? { date: week.date, courseId: week.courseId } : null), [week?.id]); // eslint-disable-line
   if (!week || !f) return null;
   const del = () => {
@@ -217,6 +221,11 @@ function WeekSheet({ ctx, week, onClose }) {
           <select className="input" value={f.courseId} onChange={(e) => setF({ ...f, courseId: e.target.value })}>
             {league.courses.map((c) => <option key={c.id} value={c.id}>{c.name} · par {c.par} · {c.rating}/{c.slope}</option>)}
           </select></label>
+        <button className="btn sm" style={{ justifySelf: 'start' }} onClick={() => setFind(true)} data-testid="week-find-course"><Icon name="search" size={15} /> Find a GSPro course</button>
+        {find && <Suspense fallback={null}><CoursePicker open saved={league.courses} onClose={() => setFind(false)}
+          onManual={() => { setFind(false); setEditCourse(blankCourse()); }}
+          onPick={(c) => { setFind(false); if (c._existing) setF((x) => ({ ...x, courseId: c.id })); else setEditCourse(c); }} /></Suspense>}
+        <CourseSheet ctx={ctx} course={editCourse} onClose={() => setEditCourse(null)} onSaved={(c) => setF((x) => ({ ...x, courseId: c.id }))} />
       </div>
     </Sheet>
   );

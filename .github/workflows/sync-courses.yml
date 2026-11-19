@@ -1,0 +1,36 @@
+name: Sync GSPro course library
+
+on:
+  schedule:
+    - cron: '23 10 * * 1'   # Mondays 10:23 UTC (early morning US)
+  workflow_dispatch:
+
+permissions:
+  contents: write   # commit public/courses.json
+  actions: write    # kick the Pages deploy (pushes made with GITHUB_TOKEN don't trigger workflows)
+
+concurrency:
+  group: sync-courses
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Fails (and keeps the old file) if SGT's page changed or the list shrank by >20%.
+      - run: node scripts/sync-courses.mjs
+      - name: Commit if changed, then deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- public/courses.json; then echo "No course changes"; exit 0; fi
+          git config user.name "carry-course-sync[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/courses.json
+          git commit -m "Course library: weekly sync from Simulator Golf Tour"
+          git push
+          gh workflow run deploy.yml --ref "${GITHUB_REF_NAME}"

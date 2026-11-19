@@ -107,6 +107,13 @@ export default function Rules({ ctx }) {
           </div>
         </div>
       </div>
+
+      <div className="card flat" style={{ marginTop: 12, background: 'var(--surface-2)' }} data-testid="about-credits">
+        <div className="eyebrow">About Carry · credits</div>
+        <p className="t2" style={{ fontSize: 13, margin: '6px 0 0' }}>
+          Course list courtesy of <a href="https://simulatorgolftour.com/courses/" target="_blank" rel="noopener">Simulator Golf Tour</a> (names, par, GSPro difficulty, scorecard images), refreshed weekly. Course styles and private-server courses come from <a href="https://pakgolfstudios.com/gspro-course-list/" target="_blank" rel="noopener">PakGolf Studios</a>. GSPro courses are free, community-built designs. Carry isn't affiliated with GSPro, SGT or PakGolf.
+        </p>
+      </div>
     </>
   );
 }

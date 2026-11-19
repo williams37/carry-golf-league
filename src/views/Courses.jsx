@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Icon, Sheet, Empty } from '../components/ui.jsx';
 import { gsproToSlope, suggestRating } from '../lib/golf.js';
 import { uid } from '../lib/seed.js';
+const CoursePicker = lazy(() => import('./CoursePicker.jsx'));
+
+export const blankCourse = () => blank();
 
 const blank = () => ({ id: uid('c_'), name: '', tees: '', gspro: 5.8, slope: 113, rating: 36, par: 36, holes: [4, 4, 3, 5, 4, 4, 3, 5, 4].map((par, i) => ({ par, si: [1, 5, 9, 3, 7, 2, 8, 4, 6][i] })) });
 
@@ -26,14 +29,15 @@ export function SlopeGuide() {
 export default function Courses({ ctx }) {
   const { league, isCommissioner, derived } = ctx;
   const [edit, setEdit] = useState(null);
+  const [find, setFind] = useState(false);
   const usedBy = (id) => derived.weeks.filter((w) => w.courseId === id).map((w) => w.number);
   return (
     <>
       <div className="page-head">
         <div><div className="eyebrow">A different 9 every week</div><h1 className="page-title">Courses</h1></div>
-        {isCommissioner && <button className="btn sm" onClick={() => setEdit(blank())}><Icon name="plus" size={16} /> Add course</button>}
+        {isCommissioner && <button className="btn sm" onClick={() => setFind(true)} data-testid="course-add"><Icon name="plus" size={16} /> Add course</button>}
       </div>
-      {league.courses.length === 0 && <Empty icon="map" title="No courses yet" action={isCommissioner && <button className="btn primary" onClick={() => setEdit(blank())}>Add a course</button>}>Add the GSPro course you're playing this week: par, stroke index, and its difficulty. Carry works out the slope.</Empty>}
+      {league.courses.length === 0 && <Empty icon="map" title="No courses yet" action={isCommissioner && <button className="btn primary" onClick={() => setFind(true)}>Find a GSPro course</button>}>Search over 3,000 GSPro courses, or enter one by hand: par, stroke index and difficulty. Carry works out the slope.</Empty>}
       <div className="grid-3">
         {league.courses.map((c, i) => (
           <button key={c.id} className="card link rise" style={{ textAlign: 'left', animationDelay: `${i * 0.03}s` }} onClick={() => isCommissioner && setEdit(structuredClone(c))}>
@@ -41,7 +45,7 @@ export default function Courses({ ctx }) {
             <div className="meta" style={{ marginTop: 4 }}>{c.tees && <><span>{c.tees} tees</span>·</>}<span>Par {c.par}</span>·<span>CR {c.rating}</span>·<span>Slope {c.slope}</span></div>
             <div className="strip" style={{ marginTop: 12 }}>{c.holes.map((h, j) => <div key={j} className="cell" style={{ height: 26, fontSize: 12 }}>{h.par}</div>)}</div>
             <div className="row" style={{ marginTop: 10 }}>
-              <span className="muted" style={{ fontSize: 12 }}>GSPro {c.gspro ?? '–'}</span>
+              <span className="muted" style={{ fontSize: 12 }}>GSPro {c.gspro ?? '–'}{c.lib?.source === 'estimated' ? ' · est.' : ''}</span>
               <div className="moneybar grow" style={{ height: 5 }}><i style={{ width: `${((c.slope - 55) / 100) * 100}%`, background: 'var(--tracer)' }} /></div>
             </div>
           </button>
@@ -49,11 +53,14 @@ export default function Courses({ ctx }) {
       </div>
       <div style={{ marginTop: 16 }}><SlopeGuide /></div>
       <CourseSheet ctx={ctx} course={edit} onClose={() => setEdit(null)} />
+      {find && <Suspense fallback={null}><CoursePicker open saved={league.courses} onClose={() => setFind(false)}
+        onManual={() => { setFind(false); setEdit(blank()); }}
+        onPick={(c) => { setFind(false); setEdit(c._existing ? structuredClone(league.courses.find((x) => x.id === c.id)) : c); }} /></Suspense>}
     </>
   );
 }
 
-function CourseSheet({ ctx, course, onClose }) {
+export function CourseSheet({ ctx, course, onClose, onSaved }) {
   const { mutate, toast, league } = ctx;
   const [c, setC] = useState(course);
   const [auto, setAuto] = useState(true);
@@ -65,7 +72,7 @@ function CourseSheet({ ctx, course, onClose }) {
   const siOk = [...sis].sort((a, b) => a - b).join() === '1,2,3,4,5,6,7,8,9';
   const setDiff = (d) => {
     const slope = gsproToSlope(d);
-    setC({ ...c, gspro: d, slope, rating: auto ? suggestRating(par, slope) : c.rating });
+    setC({ ...c, gspro: d, slope, rating: auto ? suggestRating(par, slope) : c.rating, ...(c.lib ? { lib: { ...c.lib, source: 'estimated' } } : {}) });
   };
   const setHole = (i, k, v) => {
     const holes = c.holes.map((h, j) => (j === i ? { ...h, [k]: v === '' ? '' : Number(v) } : h));
@@ -77,7 +84,7 @@ function CourseSheet({ ctx, course, onClose }) {
     if (!siOk) return toast('Stroke index must use 1–9 once each');
     const clean = { ...c, par, slope: Number(c.slope), rating: Number(c.rating), holes: c.holes.map((h) => ({ par: Number(h.par), si: Number(h.si) })) };
     mutate((l) => { const i = l.courses.findIndex((x) => x.id === c.id); if (i >= 0) l.courses[i] = clean; else l.courses.push(clean); });
-    toast(exists ? 'Course updated' : 'Course added'); onClose();
+    toast(exists ? 'Course updated' : 'Course added'); onSaved?.(clean); onClose();
   };
   const del = () => {
     if (ctx.derived.weeks.some((w) => w.courseId === c.id)) return toast('This course is used by a week, so it can\'t be deleted');
@@ -96,9 +103,10 @@ function CourseSheet({ ctx, course, onClose }) {
           <input type="range" min="0" max="10" step="0.1" value={c.gspro ?? 5.8} onChange={(e) => setDiff(Number(e.target.value))} aria-label="GSPro difficulty" />
           <div className="grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', marginTop: 8 }}>
             <label className="field"><span>Par</span><input className="input" value={par} readOnly /></label>
-            <label className="field"><span>Slope</span><input className="input" inputMode="numeric" value={c.slope} onChange={(e) => setC({ ...c, slope: e.target.value })} /></label>
-            <label className="field"><span>Course rating</span><input className="input" inputMode="decimal" value={c.rating} onChange={(e) => { setAuto(false); setC({ ...c, rating: e.target.value }); }} /></label>
+            <label className="field"><span>Slope</span><input className="input" inputMode="numeric" value={c.slope} onChange={(e) => setC({ ...c, slope: e.target.value, ...(c.lib ? { lib: { ...c.lib, source: 'manual' } } : {}) })} /></label>
+            <label className="field"><span>Course rating</span><input className="input" inputMode="decimal" value={c.rating} onChange={(e) => { setAuto(false); setC({ ...c, rating: e.target.value, ...(c.lib ? { lib: { ...c.lib, source: 'manual' } } : {}) }); }} /></label>
           </div>
+          {c.lib && <small className="muted" style={{ display: 'block', marginTop: 6 }} data-testid="course-source">{c.lib.source === 'estimated' ? 'Estimated from GSPro difficulty. Enter the card\'s rating and slope for fairer handicaps.' : c.lib.source === 'scorecard' ? `From the scorecard: ${c.lib.rating18}/${c.lib.slope18} over 18 (par ${c.lib.par18}), converted to nine holes per WHS.` : 'Rating and slope entered by hand.'} From the GSPro course library (Simulator Golf Tour).</small>}
         </div>
         <div>
           <div className="hole-grid">

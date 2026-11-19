@@ -499,3 +499,37 @@ mark { background: color-mix(in oklab, var(--lime) 35%, transparent); color: inh
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fade { from { opacity: 0; } }
 @media (max-width: 380px) { .scan-cell input { font-size: 17px; } .scan-cells, .pad-holes { gap: 4px; } }
+
+/* ---------- GSPro course library picker ---------- */
+.course-picker { gap: 12px; grid-template-columns: minmax(0, 1fr); }
+.course-picker > * { min-width: 0; }
+.search-box { position: relative; display: block; }
+.search-box svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.search-box .input { padding-left: 38px; height: 46px; font-size: 16px; width: 100%; }
+.course-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.course-filters .seg { flex: 1 1 210px; display: grid; }
+.course-filters .seg button { padding: 0 6px; font-size: 12.5px; }
+.course-results { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: minmax(0, 1fr); }
+.course-results li { min-width: 0; }
+.course-row { width: 100%; display: flex; gap: 10px; align-items: center; text-align: left; padding: 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--text); transition: border-color .15s, background .15s; }
+.course-row:hover, .course-row:focus-visible { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 6%, var(--surface)); }
+.cr-name { font-weight: 650; font-size: 14.5px; }
+.cr-meta { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+.cr-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.cr-tags:empty { display: none; }
+.cr-num { flex: none; text-align: right; display: grid; gap: 4px; justify-items: end; font-size: 13px; }
+.cr-diff { min-width: 34px; height: 22px; padding: 0 7px; border-radius: 99px; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; background: color-mix(in oklab, var(--tracer) 18%, transparent); color: var(--text); font-variant-numeric: tabular-nums; }
+.tag { display: inline-flex; align-items: center; gap: 3px; height: 20px; padding: 0 7px; border-radius: 99px; font-size: 11px; font-weight: 600; background: var(--surface-2); color: var(--text-2); text-transform: capitalize; white-space: nowrap; }
+.tag.priv { background: color-mix(in oklab, var(--gold, #d9b45a) 22%, transparent); text-transform: none; }
+.tag.mine { background: color-mix(in oklab, var(--accent) 20%, transparent); color: var(--text); text-transform: none; }
+.course-credit { font-size: 11.5px; line-height: 1.45; margin: 4px 0 0; }
+.course-credit a { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
+.course-skel { display: grid; gap: 6px; }
+.course-skel .skel { height: 62px; border-radius: 14px; background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%); background-size: 200% 100%; animation: skel 1.2s infinite linear; }
+@keyframes skel { to { background-position: -200% 0; } }
+.sc-image { display: block; position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--line); background: #fff; }
+.sc-image img { display: block; width: 100%; height: auto; aspect-ratio: 1024 / 596; object-fit: contain; }
+.sc-hint { position: absolute; left: 6px; bottom: 6px; right: 6px; display: flex; gap: 5px; align-items: center; font-size: 11px; padding: 4px 8px; border-radius: 8px; background: rgba(0,0,0,.65); color: #fff; }
+.note-card { background: color-mix(in oklab, var(--accent) 10%, var(--surface-2)); font-size: 13px; }
+.warn-card { font-size: 13px; }
+.linkish { border: 0; background: none; color: var(--accent); text-decoration: underline; padding: 0; font: inherit; }
