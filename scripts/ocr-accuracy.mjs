@@ -6,6 +6,9 @@ import fs from 'node:fs';
 const args = process.argv.slice(2);
 const modes = args.includes('--full') ? ['full'] : args.includes('--crop') ? ['crop'] : ['crop', 'full'];
 const truth = JSON.parse(fs.readFileSync('tests/fixtures/scorecards/truth.json', 'utf8'));
+// Optional private cases (real photos with real names, git-ignored): tests/fixtures/private/truth.json, files relative to scorecards/
+const PRIV = 'tests/fixtures/private/truth.json';
+if (fs.existsSync(PRIV)) truth.cases.push(...JSON.parse(fs.readFileSync(PRIV, 'utf8')).cases.map((c) => ({ ...c, optional: true })));
 const only = args.find((a) => !a.startsWith('--') && truth.cases.some((c) => c.id === a));
 const server = await createServer({ server: { port: 5199, strictPort: true }, logLevel: 'error', configFile: 'vite.config.js' });
 await server.listen();

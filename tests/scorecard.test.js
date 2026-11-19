@@ -139,13 +139,13 @@ describe('assemble + pickRow', () => {
   });
 });
 
-describe('real GSPro card problems (Nick Vidra / Seth McLaughlin / Josh Williams)', () => {
-  const ROSTER = [{ id: 'p1', name: 'Nick Vidra' }, { id: 'p2', name: 'Seth McLaughlin' }, { id: 'p3', name: 'Josh Williams' }, { id: 'p4', name: 'Dee Okafor' }];
+describe('real GSPro card problems (3-player projector card; fictional names)', () => {
+  const ROSTER = [{ id: 'p1', name: 'Mike Doran' }, { id: 'p2', name: 'Kyle McAllister' }, { id: 'p3', name: 'Owen Phillips' }, { id: 'p4', name: 'Dee Okafor' }];
   const rowOf = (label, s, kind) => ({ label, kind: kind || classifyLabel(label), holes: s.map((v) => (v == null ? null : { value: v, conf: 90 })), total: null });
   it('recognises structural rows even when OCR mangles the label', () => {
     for (const l of ['PAR', 'PAR:', 'RAR']) expect(classifyLabel(l)).toBe('par');
     for (const l of ['INDEX', 'lNDEX', 'INDFX', 'DISTANCE', 'DlSTANCE', 'STANCE', 'HCP', 'HANDICAP', 'YARDS']) expect(classifyLabel(l)).not.toBe('player');
-    for (const l of ['Dee', 'Nick Vidra', 'JOSH WILLIAMS']) expect(classifyLabel(l)).toBe('player');
+    for (const l of ['Dee', 'Mike Doran', 'OWEN PHILLIPS']) expect(classifyLabel(l)).toBe('player');
   });
   it('keeps exactly the 3 player rows: drops INDEX (even misread) and DISTANCE', () => {
     const r = assemble([
@@ -164,20 +164,20 @@ describe('real GSPro card problems (Nick Vidra / Seth McLaughlin / Josh Williams
     expect(assemble([rowOf('', [4, 4, 4, 4, 3, 5, 3, 4, 5], 'unknown')]).par).toBe(null);
   });
   it('never shows OCR gibberish: the reads the user actually got', () => {
-    for (const g of ['NIGKNVIBRA', 'semsmeunucEun', 'yoosramserss', 'oswwwans', 'RRs', 'Shiite pe', 'IBRA']) expect(looksLikeName(g), g).toBe(g === 'IBRA' || g === 'Shiite pe');
-    for (const n of ['NICK VIDRA', 'SETH MCLAUGHLIN', 'Josh Williams', "Dee O'Kafor", 'Schwartz', 'McDonald']) expect(looksLikeName(n), n).toBe(true);
-    expect(looksLikeName('NICK VIDRA', 30)).toBe(false); // low OCR confidence
+    for (const g of ['MIGKEDOBAN', 'semsmeunucEun', 'yoosramserss', 'oswwwans', 'RRs', 'Shiite pe', 'ORAN']) expect(looksLikeName(g), g).toBe(g === 'ORAN' || g === 'Shiite pe');
+    for (const n of ['MIKE DORAN', 'KYLE MCALLISTER', 'Owen Phillips', "Dee O'Kafor", 'Schwartz', 'McDonald']) expect(looksLikeName(n), n).toBe(true);
+    expect(looksLikeName('MIKE DORAN', 30)).toBe(false); // low OCR confidence
   });
   it('maps rows to the roster (fuzzy), and falls back to "Row N" otherwise', () => {
-    const ps = matchRoster([{ label: 'NIGKNVIBRA' }, { label: 'semsmeunucEun' }, { label: 'JOSH WILLAMS' }], ROSTER);
-    expect(ps.map((p) => p.display)).toEqual(['Nick Vidra', 'Row 2', 'Josh Williams']);
+    const ps = matchRoster([{ label: 'MIGKEDOBAN' }, { label: 'semsmeunucEun' }, { label: 'OWEN PHILIPS' }], ROSTER);
+    expect(ps.map((p) => p.display)).toEqual(['Mike Doran', 'Row 2', 'Owen Phillips']);
     expect(ps[0].rosterId).toBe('p1');
-    expect(pickRow(ps, 'Josh Williams', 'p3')).toBe(2);
+    expect(pickRow(ps, 'Owen Phillips', 'p3')).toBe(2);
     // one roster person can't claim two rows; a surname alone still matches
-    const two = matchRoster([{ label: 'VIDRA' }, { label: 'NICK VIDRA' }], ROSTER);
-    expect(two.map((p) => p.display)).toEqual(['VIDRA', 'Nick Vidra']); // second row keeps its own clean read
+    const two = matchRoster([{ label: 'DORAN' }, { label: 'MIKE DORAN' }], ROSTER);
+    expect(two.map((p) => p.display)).toEqual(['DORAN', 'Mike Doran']); // second row keeps its own clean read
   });
   it('with no roster, clean OCR names show as read', () => {
-    expect(matchRoster([{ label: 'SETH MCLAUGHLIN', labelConf: 88 }, { label: 'yoosramserss' }]).map((p) => p.display)).toEqual(['SETH MCLAUGHLIN', 'Row 2']);
+    expect(matchRoster([{ label: 'KYLE MCALLISTER', labelConf: 88 }, { label: 'yoosramserss' }]).map((p) => p.display)).toEqual(['KYLE MCALLISTER', 'Row 2']);
   });
 });

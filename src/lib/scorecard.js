@@ -365,7 +365,7 @@ function nameSim(read, name) {
   const a = letters(read), b = letters(name);
   if (!a || !b) return 0;
   let best = 1 - lev(a, b) / Math.max(a.length, b.length);
-  // a first or last name alone ("VIDRA", "Nick") also counts, a bit less
+  // a first or last name alone ("DORAN", "Nick") also counts, a bit less
   for (const part of String(name).split(/[\s"“”]+/).map(letters).filter((x) => x.length >= 3)) {
     const sim = 1 - lev(a, part) / Math.max(a.length, part.length);
     best = Math.max(best, sim * 0.92);

@@ -111,9 +111,9 @@ const RPAR = [4, 3, 4, 4, 3, 5, 3, 4, 5];
 const RIDX = [5, 9, 1, 3, 7, 2, 8, 6, 4];
 const RDIST = [388, 162, 431, 402, 175, 538, 148, 377, 512];
 const RPL = [
-  { name: 'NICK VIDRA', s: [5, 3, 4, 3, 3, 5, 3, 5, 7] },
-  { name: 'SETH MCLAUGHLIN', s: [5, 5, 5, 4, 3, 6, 5, 4, 4] },
-  { name: 'JOSH WILLIAMS', s: [5, 4, 4, 6, 4, 4, 3, 5, 4] },
+  { name: 'MIKE DORAN', s: [5, 3, 4, 3, 3, 5, 3, 5, 7] },
+  { name: 'KYLE MCALLISTER', s: [5, 5, 5, 4, 3, 6, 5, 4, 4] },
+  { name: 'OWEN PHILLIPS', s: [5, 4, 4, 6, 4, 4, 3, 5, 4] },
 ];
 const avatar = `<svg width="30" height="30" viewBox="0 0 30 30"><circle cx="15" cy="15" r="14" fill="#d5d9de"/><circle cx="15" cy="11.5" r="5" fill="#9aa3ad"/><path d="M5.5 25c1.8-5 5.4-7 9.5-7s7.7 2 9.5 7" fill="#9aa3ad"/></svg>`;
 function whiteCard() {
@@ -156,7 +156,6 @@ for (const c of [{ id: 'projector-clean', css: '' }, { id: 'projector-photo', cs
   console.log('  ✓', file);
   await ctx.close();
 }
-// A real bay photo can be dropped in (kept out of git — people's names): tests/fixtures/private/real-gspro-1.jpg
-truth.cases.push({ id: 'real-gspro-1', file: '../private/real-gspro-1.jpg', optional: true, player: 'JOSH WILLIAMS', scores: [5, 4, 4, 6, 4, 4, 3, 5, 4], rows: RPL.map((x) => x.name), all: RPL, par: RPAR, multi: true, strict: true });
+// Real bay photos (people's names) live only in the git-ignored tests/fixtures/private/ with their own truth.json.
 fs.writeFileSync(OUT + 'truth.json', JSON.stringify(truth, null, 2));
 await browser.close();

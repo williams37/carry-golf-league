@@ -143,27 +143,27 @@ console.log('390px — projector GSPro card, roster matching');
   // Put the card's three golfers on the league roster (as the user's league would have them).
   await p.evaluate(() => {
     const db = JSON.parse(localStorage.getItem('carry:v1')); const L = Object.values(db.leagues)[0];
-    ['Nick Vidra', 'Seth McLaughlin', 'Josh Williams'].forEach((n, k) => { L.players[k].name = n; });
+    ['Mike Doran', 'Kyle McAllister', 'Owen Phillips'].forEach((n, k) => { L.players[k].name = n; });
     localStorage.setItem('carry:v1', JSON.stringify(db));
   });
   await p.reload(); await p.waitForSelector('.entrant');
-  await openPad(p, 'Josh Williams');
+  await openPad(p, 'Owen Phillips');
   await scan(p, c.file);
   await p.click('[data-testid=scan-read]');
   await p.waitForSelector('[data-testid=scan-review]', { timeout: 120000 });
   const rows = (await p.locator('[data-testid=scan-row]').allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
   ok(rows.length === 3, `exactly 3 player rows (PAR/INDEX/DISTANCE excluded): ${rows.join(' | ')}`);
-  ok(JSON.stringify(rows) === JSON.stringify(['Nick Vidra · 38', 'Seth McLaughlin · 41', 'Josh Williams · 39']), 'chips show roster names + totals');
+  ok(JSON.stringify(rows) === JSON.stringify(['Mike Doran · 38', 'Kyle McAllister · 41', 'Owen Phillips · 39']), 'chips show roster names + totals');
   const on = p.locator('[data-testid=scan-row].on');
-  ok((await on.textContent()).includes('Josh Williams'), 'auto-selected my row (Josh Williams) by roster match');
+  ok((await on.textContent()).includes('Owen Phillips'), 'auto-selected my row (Owen Phillips) by roster match');
   const clipped = await p.$$eval('[data-testid=scan-row] .chip-name', (xs) => xs.filter((x) => x.scrollWidth > x.clientWidth + 1).map((x) => x.textContent));
   ok(!clipped.length, `no chip name clipped${clipped.length ? ': ' + clipped : ''}`);
-  ok(JSON.stringify(await cells(p)) === JSON.stringify(c.scores), `Josh's holes read exactly: ${(await cells(p)).join('')}`);
+  ok(JSON.stringify(await cells(p)) === JSON.stringify(c.scores), `Owen's holes read exactly: ${(await cells(p)).join('')}`);
   const note = p.locator('[data-testid=par-note]');
   if (await note.count()) ok(/Heads up/.test(await note.textContent()) && !(await note.evaluate((n) => n.classList.contains('warn'))), 'par difference shown as a soft note, not a warning');
   else ok(true, 'card par matches the course: no par note');
   await shot(p, 'fix-1-projector-review'); await noOverflow(p, 'projector review');
-  for (const [k, who] of [[0, 'Nick Vidra'], [1, 'Seth McLaughlin']]) {
+  for (const [k, who] of [[0, 'Mike Doran'], [1, 'Kyle McAllister']]) {
     await p.locator('[data-testid=scan-row]').nth(k).click();
     ok(JSON.stringify(await cells(p)) === JSON.stringify(c.all[k].s), `${who}'s row reads exactly: ${(await cells(p)).join('')}`);
   }
