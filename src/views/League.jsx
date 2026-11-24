@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon, Switch, Seg, Avatar, shortName } from '../components/ui.jsx';
-import { settingsOf, DEFAULT_SETTINGS } from '../lib/golf.js';
+import { settingsOf, DEFAULT_SETTINGS, closeSeason, seasonAsLeague, computeHandicaps, standings, seasonSkins, sortedWeeks } from '../lib/golf.js';
+import { Sheet, money, fmtIdx } from '../components/ui.jsx';
 import { demoLeague } from '../lib/seed.js';
 import { cloudConfig, saveCloudConfig, hasBuiltInCloud } from '../config.js';
 import { auth } from '../lib/store/cloud.js';
@@ -20,11 +21,11 @@ export function download(name, blob) {
 }
 export const fileSafe = (s) => s.replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-');
 
-export async function exportExcel(ctx) {
+export async function exportExcel(ctx, league = ctx.league) {
   ctx.toast('Building workbook…');
   const { buildWorkbook } = await import('../lib/excel.js');
-  const blob = await buildWorkbook(ctx.league);
-  download(workbookName(ctx.league), blob);
+  const blob = await buildWorkbook(league);
+  download(workbookName(league), blob);
   ctx.toast('Excel workbook downloaded');
 }
 
@@ -109,6 +110,9 @@ export default function League({ ctx }) {
           </div>
         </>
       )}
+
+      <div className="h2">Seasons</div>
+      <Seasons ctx={ctx} />
 
       <EmailWorkbookSheet ctx={ctx} open={emailing} onClose={() => setEmailing(false)} />
       <div className="h2">Data</div>
@@ -272,6 +276,100 @@ function CloudCard({ ctx }) {
       </div>
       {league && !league.isDemo && <p className="muted" style={{ fontSize: 12 }}>After you sign in, Carry offers to upload "{league.name}" so your players can join it.</p>}
     </section>
+  );
+}
+
+/** Close out a season (archived, still viewable and exportable) and start the next one without losing history. */
+function Seasons({ ctx }) {
+  const { league, isCommissioner, mutate, toast } = ctx;
+  const [closing, setClosing] = useState(false);
+  const [view, setView] = useState(null);
+  const archive = league.archive || [];
+  const weeks = sortedWeeks(league);
+  return (
+    <section className="card" data-testid="seasons">
+      <div className="row spread wrap" style={{ gap: 10 }}>
+        <div><div className="card-title">{league.season || 'This season'}</div><div className="muted" style={{ fontSize: 12.5 }}>{weeks.length} week{weeks.length === 1 ? '' : 's'} played so far · current season</div></div>
+        {isCommissioner && <button className="btn" disabled={!weeks.length} onClick={() => setClosing(true)} data-testid="season-close"><Icon name="archive" size={16} /> Close season</button>}
+      </div>
+      {archive.length > 0 && <div className="stack" style={{ marginTop: 12, gap: 0 }}>
+        {[...archive].reverse().map((a) => {
+          const champ = a.summary?.table?.filter((r) => r.place === 1) || [];
+          return (
+            <div key={a.id} className="admin-row" data-testid="season-row">
+              <div style={{ minWidth: 0 }}><b>{a.season}</b><div className="sub">Closed {new Date(a.closedAt).toLocaleDateString()} · {a.summary?.weeks ?? a.weeks.length} weeks</div></div>
+              <div className="ellipsis" style={{ fontSize: 13 }}>{champ.length ? <><Icon name="trophy" size={14} style={{ color: 'var(--gold)', verticalAlign: '-2px' }} /> {champ.map((r) => r.name).join(' & ')}</> : <span className="muted">No final weeks</span>}</div>
+              <div className="row" style={{ gap: 6 }}>
+                <button className="btn xs" onClick={() => setView(a)}>View</button>
+                <button className="btn xs ghost" onClick={() => exportExcel(ctx, seasonAsLeague(league, a))} aria-label={`Excel for ${a.season}`}><Icon name="download" size={14} /></button>
+              </div>
+            </div>
+          );
+        })}
+      </div>}
+      {!archive.length && <p className="muted" style={{ fontSize: 12.5, marginBottom: 0 }}>When the season ends, close it here. It's archived with every card, standings and skins, and you start fresh with the same players.</p>}
+      {closing && <CloseSeasonSheet ctx={ctx} onClose={() => setClosing(false)} onDone={(name) => { setClosing(false); toast(`${league.season} archived. ${name} is under way.`); }} mutate={mutate} />}
+      {view && <SeasonSheet ctx={ctx} entry={view} onClose={() => setView(null)} />}
+    </section>
+  );
+}
+
+function nextSeasonName(cur) {
+  const m = String(cur || '').match(/^(.*?)(\d{4})$/);
+  if (m) return `${m[1]}${Number(m[2]) + 1}`;
+  return `${cur || 'Season'} 2`;
+}
+
+function CloseSeasonSheet({ ctx, onClose, onDone, mutate }) {
+  const { league, derived } = ctx;
+  const [name, setName] = useState(nextSeasonName(league.season));
+  const [carry, setCarry] = useState(true);
+  const table = standings(league, Infinity, derived.hcp);
+  const champ = table.filter((r) => r.place === 1 && r.played > 0);
+  const go = () => {
+    const nm = name.trim() || nextSeasonName(league.season);
+    mutate((l) => { const n = closeSeason(l, { nextSeason: nm, carryIndex: carry }); for (const k of Object.keys(l)) delete l[k]; Object.assign(l, n); });
+    onDone(nm);
+  };
+  return (
+    <Sheet open onClose={onClose} title={`Close ${league.season || 'the season'}`} subtitle="The season is archived with every card, the final table and skins. Nothing is deleted."
+      footer={<><span className="grow" /><button className="btn ghost" onClick={onClose}>Cancel</button><button className="btn primary" onClick={go} data-testid="season-confirm"><Icon name="archive" size={16} /> Close and start {name.trim() || 'next season'}</button></>}>
+      <div className="stack">
+        {champ.length > 0 && <div className="banner"><Icon name="trophy" size={20} style={{ color: 'var(--gold)', flex: 'none' }} /><span>Champion: <b>{champ.map((r) => r.name).join(' & ')}</b> · {champ[0].total} net over {champ[0].rounds.length} weeks</span></div>}
+        <label className="field"><span>Next season's name</span><input className="input" value={name} onChange={(e) => setName(e.target.value)} data-testid="season-name" /></label>
+        <Setting label="Carry handicaps over" desc="Everyone starts next season on the index they finished with (subs too). Off: back to their starting index.">
+          <Switch on={carry} onChange={setCarry} />
+        </Setting>
+        <p className="muted" style={{ fontSize: 12.5, margin: 0 }}>Players, subs, courses, settings and invites stay. Week 1 of the new season starts empty. Past seasons stay viewable here and export to Excel any time.</p>
+      </div>
+    </Sheet>
+  );
+}
+
+function SeasonSheet({ ctx, entry, onClose }) {
+  const lg = seasonAsLeague(ctx.league, entry);
+  const hcp = computeHandicaps(lg);
+  const table = standings(lg, Infinity, hcp);
+  const sk = seasonSkins(lg, hcp);
+  return (
+    <Sheet open wide onClose={onClose} title={entry.season} subtitle={`Archived ${new Date(entry.closedAt).toLocaleDateString()} · ${entry.weeks.length} weeks`}
+      footer={<><span className="grow" /><button className="btn" onClick={() => exportExcel(ctx, lg)}><Icon name="download" size={16} /> Excel</button><button className="btn primary" onClick={onClose}>Done</button></>}>
+      <div className="grid-2">
+        <div>
+          <div className="eyebrow">Final standings</div>
+          <div className="tbl-wrap" style={{ marginTop: 6 }}><table className="tbl">
+            <thead><tr><th>#</th><th>Player</th><th className="r">Net</th><th className="r">Rds</th><th className="r">Index</th></tr></thead>
+            <tbody>{table.map((r) => <tr key={r.id} className={r.place === 1 ? 'used' : ''}><td>{r.place}</td><td>{r.name}</td><td className="r"><b>{r.total}</b></td><td className="r">{r.played}</td><td className="r muted">{fmtIdx(hcp.current[r.id]?.index ?? 0)}</td></tr>)}</tbody>
+          </table></div>
+        </div>
+        <div>
+          <div className="eyebrow">Skins money</div>
+          <div className="stack" style={{ marginTop: 6, gap: 6 }}>
+            {sk.length ? sk.map((t) => <div key={t.id} className="row spread"><span>{t.name} {t.isSub && <span className="badge sub">Sub</span>}</span><b className="num">{money(t.money)}</b></div>) : <span className="muted">No skins.</span>}
+          </div>
+        </div>
+      </div>
+    </Sheet>
   );
 }
 

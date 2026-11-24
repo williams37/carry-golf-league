@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Icon, Avatar, shortName, money, Empty, nick } from '../components/ui.jsx';
 import { weekState } from '../lib/helpers.js';
-import { weekSkins, seasonSkins, settingsOf } from '../lib/golf.js';
+import { weekSkins, seasonSkins, settingsOf, skinsPayout } from '../lib/golf.js';
 
 export function CarryTrack({ skins, ents, big }) {
   const name = (k) => { const e = ents.find((x) => x.key === k); return e ? nick(e.name) : ''; };
@@ -54,6 +54,9 @@ export default function Skins({ ctx }) {
   const st = weekState(league, week, derived.hcp);
   const sk = weekSkins(league, week, st.ents);
   const max = Math.max(1, ...season.map((t) => t.money));
+  const pay = skinsPayout(league, week, sk);
+  const sitting = st.ents.filter((e) => !e.out && !e.skins);
+  const nm = (k) => { const e = st.ents.find((x) => x.key === k); return e ? shortName(e.name) : ''; };
 
   return (
     <>
@@ -107,6 +110,34 @@ export default function Skins({ ctx }) {
           {s.mode === 'net' && <p className="muted" style={{ fontSize: 12 }}>Gross scores shown. Each • is a handicap stroke on that hole; the lowest net score wins the skin.</p>}
         </>
       )}
+
+      <div className="h2">Settle up · week {week.number}</div>
+      <section className="card rise" data-testid="skins-payout">
+        <div className="row spread wrap" style={{ gap: 8 }}>
+          <div className="muted" style={{ fontSize: 12.5 }}>{pay.rows.length} bought in at {money(pay.buyIn)} · {money(pay.pot)} pot{pay.perSkin ? ` · ${money(pay.perSkin)} a skin` : ''}{!st.final && ' · provisional until the week is final'}</div>
+          {pay.refund && <span className="badge pending">No skins won · buy-ins back</span>}
+        </div>
+        {pay.holes.length > 0 && (
+          <div className="row wrap" style={{ gap: 6, marginTop: 10 }}>
+            {pay.holes.map((h) => <span key={h.hole} className="chip" style={{ height: 28, fontSize: 12 }}><b>#{h.hole}</b> {h.winners.map(nm).join(' & ')}{h.units > 1 ? ` ×${h.units}` : ''} · {money(h.value)}{h.winners.length > 1 ? ' each' : ''}</span>)}
+          </div>
+        )}
+        {pay.rows.length ? (
+          <div className="payout" style={{ marginTop: 10 }}>
+            <div className="payout-row muted" style={{ fontSize: 11.5, paddingTop: 0 }}><span /><span>Player</span><span className="amt">Paid</span><span className="amt">Collects</span><span className="amt">Net</span></div>
+            {pay.rows.map((r) => (
+              <div key={r.key} className="payout-row">
+                <Avatar name={r.name} color={r.color} sub={r.isSub} size="sm" />
+                <span className="ellipsis" style={{ fontWeight: 600 }}>{r.name} {r.isSub && <span className="badge sub">Sub</span>}{r.holes.length > 0 && <span className="muted" style={{ fontWeight: 500, fontSize: 12 }}> · hole{r.holes.length > 1 ? 's' : ''} {r.holes.join(', ')}</span>}</span>
+                <span className="amt muted">{money(r.paid)}</span>
+                <span className="amt" style={{ fontWeight: 750, color: r.owed ? 'var(--gold)' : undefined }}>{r.owed ? money(r.owed) : '–'}</span>
+                <span className={`amt ${r.net > 0 ? 'pos' : 'neg'}`}>{r.net > 0 ? '+' : r.net < 0 ? '−' : ''}{money(Math.abs(r.net))}</span>
+              </div>
+            ))}
+          </div>
+        ) : <p className="muted" style={{ marginBottom: 0 }}>Nobody is in the skins for this week yet. The commissioner ticks <b>Skins</b> next to each player who paid on the Scores tab.</p>}
+        {sitting.length > 0 && <p className="muted" style={{ fontSize: 12.5, marginBottom: 0 }}>Not in the skins this week: {sitting.map((e) => shortName(e.name)).join(', ')}. They still count for teams and standings.</p>}
+      </section>
 
       <div className="h2">Season money</div>
       {season.length ? (

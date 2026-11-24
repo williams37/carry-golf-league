@@ -23,14 +23,19 @@ jobs:
           node-version: 22
       # Fails (and keeps the old file) if SGT's page changed or the list shrank by >20%.
       - run: node scripts/sync-courses.mjs
+      # Per-tee rating/slope: OCR only the scorecards of new or updated courses (cached in public/tees.json).
+      # Never blocks the course list: if it fails, last week's tee data ships.
+      - run: npm ci --no-audit --no-fund
+      - run: node scripts/sync-tees.mjs
+        continue-on-error: true
       - name: Commit if changed, then deploy
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git diff --quiet -- public/courses.json; then echo "No course changes"; exit 0; fi
+          if git diff --quiet -- public/courses.json public/tees.json; then echo "No course changes"; exit 0; fi
           git config user.name "carry-course-sync[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/courses.json
+          git add public/courses.json public/tees.json
           git commit -m "Course library: weekly sync from Simulator Golf Tour"
           git push
           gh workflow run deploy.yml --ref "${GITHUB_REF_NAME}"

@@ -15,6 +15,7 @@ import TV from './views/TV.jsx';
 import Welcome from './views/Welcome.jsx';
 import AuthScreen, { NewPassword } from './views/Auth.jsx';
 import Join from './views/Join.jsx';
+import Admin from './views/Admin.jsx';
 
 const NAV = [
   { id: 'home', label: 'Clubhouse', icon: 'home' },
@@ -67,6 +68,7 @@ export default function App() {
   if (page === 'join') return <Join ctx={ctx} code={route[1]} />;
   if (lg.mode === 'cloud' && lg.authState.status !== 'signedIn') return <AuthScreen ctx={ctx} />;
   if (page === 'tv' && lg.league) return <TV ctx={ctx} />;
+  if (page === 'admin' && lg.isAdmin && !lg.league) return <div className="app"><div className="main" style={{ gridColumn: '1 / -1' }}><Admin ctx={ctx} /></div></div>;
 
   if (welcome && (lg.mode === 'local' || !lg.loading)) {
     return <Welcome ctx={ctx} onDone={() => { writePrefs({ onboarded: true }); welcomeOpened.current = false; setWelcome(false); }} />;
@@ -91,14 +93,15 @@ export default function App() {
     );
   }
 
-  const View = { home: Home, scores: Week, table: Table, skins: Skins, players: Players, courses: Courses, rules: Rules, league: League, more: More }[page] || Home;
+  const View = { home: Home, scores: Week, table: Table, skins: Skins, players: Players, courses: Courses, rules: Rules, league: League, more: More, ...(lg.isAdmin ? { admin: Admin } : {}) }[page] || Home;
+  const nav = lg.isAdmin ? [...NAV, { id: 'admin', label: 'Admin', icon: 'shield' }] : NAV;
   const activeTab = TABS.includes(page) ? page : 'more';
 
   return (
     <div className="app">
       <aside className="sidebar">
         <Brand league={lg.league} />
-        {NAV.map((n) => (
+        {nav.map((n) => (
           <button key={n.id} className={`side-link ${page === n.id || (page === '' && n.id === 'home') ? 'on' : ''}`} onClick={() => go(n.id)}>
             <Icon name={n.icon} /> {n.label}
           </button>

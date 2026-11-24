@@ -73,7 +73,11 @@ export const auth = {
   async signUp(cfg, email, password) {
     const sb = await getClient(cfg);
     const { data, error } = await sb.auth.signUp({ email, password, options: { emailRedirectTo: redirectUrl() } });
-    if (error) throw friendly(error);
+    if (error) {
+      const e = friendly(error);
+      if (e.code === 'user_exists') return { session: null, needsConfirm: false, exists: true };
+      throw e;
+    }
     // With confirmation on, an already-registered email comes back as a user with no identities.
     const exists = !data.session && data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0;
     return { session: data.session, needsConfirm: !data.session && !exists, exists };
@@ -116,14 +120,18 @@ export const auth = {
 /** Turn Supabase auth errors into plain-English messages (code kept on .code for the UI). */
 export function friendly(error) {
   const m = error?.message || String(error);
-  const code = error?.code || (/not confirmed/i.test(m) ? 'email_not_confirmed' : /invalid login/i.test(m) ? 'invalid_credentials' : '');
+  const code = /already registered|already exists|user_already_exists|email_exists/i.test(m + ' ' + (error?.code || '')) ? 'user_exists'
+    : error?.code || (/not confirmed/i.test(m) ? 'email_not_confirmed' : /invalid login/i.test(m) ? 'invalid_credentials' : '');
   const map = [
     [/not confirmed/i, "This email isn't confirmed yet. Open the confirmation email we sent (check spam), then sign in."],
-    [/invalid login credentials/i, "That email and password don't match. Check them, or tap \"Forgot password\"."],
+    [/invalid login credentials/i, "That email and password don't match. If you made your account with an email code, it has no password yet: get a code, or set one with Forgot password."],
     [/rate limit|too many|over_email_send_rate_limit/i, 'Too many emails sent just now. Wait a few minutes and try again.'],
     [/not authorized|email address .* is invalid/i, "The league server can't send email to this address yet. Ask your commissioner (they need to set up email sending in Supabase)."],
     [/password should be|weak password/i, 'Choose a stronger password: at least 6 characters.'],
-    [/already registered/i, 'That email already has an account. Sign in instead.'],
+    [/already registered|already exists/i, 'That email already has an account. Sign in instead.'],
+    [/database error saving new user|unexpected_failure/i, "The league server couldn't create the account just now. Try again in a minute, or use Email code."],
+    [/signups not allowed|signup is disabled/i, 'New sign-ups are switched off on this league server. Ask your commissioner.'],
+    [/fetch failed|failed to fetch|networkerror|load failed/i, "Couldn't reach the league server. Check your connection and try again."],
     [/token has expired|otp.*(expired|invalid)/i, 'That code is wrong or has expired. Request a new one.'],
     [/error sending/i, "The league server couldn't send the email. Try again in a minute, or ask your commissioner to check email settings."],
   ];
@@ -140,9 +148,11 @@ export function redirectUrl() {
 
 // leagues.data holds the league document only: scores live in their own table,
 // and members / invite code / id come from their own columns (never copied into JSON).
+const noScores = (weeks) => (weeks || []).map(({ scores, ...w }) => w);
 const stripScores = ({ members, inviteCode, id, ...league }) => ({
   ...league,
-  weeks: (league.weeks || []).map(({ scores, ...w }) => w),
+  weeks: noScores(league.weeks),
+  ...(league.archive ? { archive: league.archive.map((a) => ({ ...a, weeks: noScores(a.weeks) })) } : {}),
 });
 
 const BUCKET = 'scorecards';
@@ -182,9 +192,11 @@ export function cloudStore(cfg) {
       ]);
       if (lg.error) throw lg.error;
       const league = { ...lg.data.data, id, name: lg.data.name, inviteCode: lg.data.invite_code };
-      for (const w of league.weeks || []) w.scores = {};
+      // closed seasons keep their weeks (and so their score rows) under league.archive
+      const allWeeks = [...(league.weeks || []), ...(league.archive || []).flatMap((a) => a.weeks || [])];
+      for (const w of allWeeks) w.scores = {};
       for (const s of sc.data || []) {
-        const w = league.weeks.find((x) => x.id === s.week_id);
+        const w = allWeeks.find((x) => x.id === s.week_id);
         if (w) w.scores[s.player_key] = { holes: s.holes, status: s.status, by: s.entered_by, at: Date.parse(s.updated_at), ...(s.photo_path ? { photo: s.photo_path } : {}) };
       }
       league.members = mem.data || [];
@@ -196,7 +208,7 @@ export function cloudStore(cfg) {
       const { data, error } = await c.rpc('create_league', { p_name: league.name, p_data: stripScores(league) });
       if (error) throw error;
       // push any scores (e.g. when uploading a local league)
-      for (const w of league.weeks || []) for (const [k, v] of Object.entries(w.scores || {}))
+      for (const w of [...(league.weeks || []), ...(league.archive || []).flatMap((a) => a.weeks || [])]) for (const [k, v] of Object.entries(w.scores || {}))
         await c.from('scores').upsert({ league_id: data, week_id: w.id, player_key: k, holes: v.holes, status: 'approved' });
       return data;
     },
@@ -277,6 +289,24 @@ export function cloudStore(cfg) {
       const c = await sb();
       const { data, error } = await c.rpc('regenerate_invite', { p_league: leagueId });
       if (error) throw error; return data;
+    },
+    // ---- owner-only admin (supabase/admin.sql): every write is a security-definer RPC that checks admin rights and logs it ----
+    async amIAdmin() {
+      const c = await sb();
+      const { data, error } = await c.rpc('am_i_admin');
+      return !error && data === true;
+    },
+    async admin(fn, args = {}) {
+      const c = await sb();
+      const { data, error } = await c.rpc(fn, args);
+      if (error) throw new Error(error.message);
+      return data;
+    },
+    async adminSendReset(email) {
+      const c = await sb();
+      const { error } = await c.auth.resetPasswordForEmail(email, { redirectTo: redirectUrl() });
+      if (error) throw friendly(error);
+      await c.rpc('admin_note', { p_action: 'send_reset', p_target: email });
     },
     subscribe(id, cb) {
       let ch;

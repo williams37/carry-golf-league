@@ -29,13 +29,26 @@ ok('manifest loads under the app path', man.ok && man.url.startsWith(LIVE), man.
 // bad password reaches Supabase from the live origin (CORS ok)
 await p.getByLabel('Email').fill('nobody@example.com'); await p.getByLabel(/^Password/).fill('wrong-password-123');
 await p.getByRole('button', { name: 'Sign in', exact: true }).click();
-await p.waitForSelector('.banner.err', { timeout: 15000 });
-ok('live origin talks to Supabase (wrong password → friendly error)', /don't match/.test(await p.locator('.banner.err').innerText()));
+await p.waitForSelector('[data-testid=account-exists]', { timeout: 15000 });
+const exists = await p.locator('[data-testid=account-exists]').innerText();
+ok('live origin talks to Supabase (wrong password → clear help with code + reset)', /didn't work/.test(exists) && /Email me a code/.test(exists) && /Forgot password/.test(exists));
 errs.splice(0, errs.length, ...errs.filter((e) => !/status of 400/.test(e))); // the expected 400 from the bad password
 await p.getByText('Just looking? Explore the demo league').click();
 await p.waitForSelector('.hero', { timeout: 15000 });
 ok('demo league opens', /Clubhouse|Standings/.test(await text(p)));
 await p.screenshot({ path: OUT + 'live-02-demo-home.png' });
+// batch features in the deployed bundle (demo league, local mode)
+const teesJson = await p.evaluate(async (u) => { const r = await fetch(u + 'tees.json'); const j = await r.json(); return Object.values(j.cards).filter((c) => c.t.length).length; }, LIVE);
+ok('tee ratings file is live', teesJson > 2000, `${teesJson} courses with tees`);
+await p.goto(LIVE + '#/scores/w7'); await p.waitForSelector('[data-testid=skins-toggle]', { timeout: 15000 });
+ok('weekly skins checkboxes render', (await p.locator('[data-testid=skins-toggle]').count()) === 8);
+ok('missing-cards banner renders', await p.locator('[data-testid=missing-cards]').isVisible());
+await p.goto(LIVE + '#/skins'); await p.waitForSelector('[data-testid=skins-payout]', { timeout: 15000 });
+ok('skins payout renders', /Collects/.test(await p.locator('[data-testid=skins-payout]').innerText()));
+await p.goto(LIVE + '#/players/p1'); await p.waitForSelector('[data-testid=handicap-chart]', { timeout: 15000 });
+ok('handicap history chart renders', true);
+await p.goto(LIVE + '#/league'); await p.waitForSelector('[data-testid=seasons]', { timeout: 15000 });
+ok('season close-out card renders', /Close season/.test(await p.locator('[data-testid=seasons]').innerText()));
 await p.goto(LIVE + '#/table'); await p.waitForTimeout(1200);
 await p.reload({ waitUntil: 'networkidle' }); await p.waitForTimeout(1200);
 ok('hash deep link survives refresh (#/table)', /Standings/.test(await text(p)) && p.url().endsWith('#/table'));

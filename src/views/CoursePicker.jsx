@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, Sheet, Seg } from '../components/ui.jsx';
-import { loadLibrary, searchCourses, scorecardImage, defaultPars, ninePar, nineFrom18, estimateFromDifficulty, courseFromLibrary, SGT_URL } from '../lib/courseLibrary.js';
+import { loadLibrary, searchCourses, scorecardImage, defaultPars, ninePar, nineFrom18, estimateFromDifficulty, courseFromLibrary, teeSetsFromCard, SGT_URL } from '../lib/courseLibrary.js';
 import { uid } from '../lib/seed.js';
+import { teeColor } from './teeColor.js';
 
 /** Card stroke indexes (1–18 or 1–9) for the chosen nine → 1–9 by difficulty order. */
 export function rankIndexes(idx) {
@@ -91,8 +92,11 @@ function NineSetup({ course: c, saved, onBack, onClose, onPick }) {
   const p9 = c.nine ? (c.par ?? 36) : ninePar({ ...c, par: Number(par18) || c.par }, nine);
   const [pars, setPars] = useState(() => defaultPars(p9));
   const [idx, setIdx] = useState(DEFAULT_SI);
-  const [source, setSource] = useState('estimated');
+  const card = c.cardTees || [];
+  const [source, setSource] = useState(card.length ? 'scorecard' : 'estimated');
   const [tees, setTees] = useState('');
+  // Tee picked from the card's printed tee boxes ('' = type one in by hand)
+  const [teeName, setTeeName] = useState(() => (card.find((t) => /^(white|blue)$/i.test(t.name)) || card[0])?.name || '');
   const [r18, setR18] = useState('');
   const [s18, setS18] = useState('');
   const [imgOk, setImgOk] = useState(true);
@@ -101,13 +105,18 @@ function NineSetup({ course: c, saved, onBack, onClose, onPick }) {
   const parSum = pars.reduce((a, b) => a + (Number(b) || 0), 0);
   const parsOk = pars.every((p) => Number(p) >= 3 && Number(p) <= 6);
   const si = rankIndexes(idx);
-  const real = source === 'scorecard' ? nineFrom18({ rating18: r18, slope18: s18, par18, par9: parSum }) : null;
+  const teeSets = useMemo(() => teeSetsFromCard(card, { nine9: c.nine, par9: parSum, par18: Number(par18) || c.par }), [card, parSum, par18, c.nine, c.par]);
+  const chosen = source === 'scorecard' && teeName ? teeSets.find((t) => t.name === teeName) : null;
+  const real = chosen ? { rating: chosen.rating, slope: chosen.slope } : source === 'scorecard' ? nineFrom18({ rating18: r18, slope18: s18, par18, par9: parSum }) : null;
   const est = estimateFromDifficulty(c.diff, parSum);
   const v = real || est;
   const img = scorecardImage(c.id);
   const use = () => {
     const holes = pars.map((p, i) => ({ par: Number(p), si: si ? si[i] : DEFAULT_SI[i] }));
-    onPick(courseFromLibrary(c, { nine, holes, tees, source: real ? 'scorecard' : 'estimated', rating18: r18, slope18: s18, par18, id: uid('c_') }));
+    const ct = chosen && card.find((t) => t.name === chosen.name);
+    const course = courseFromLibrary(c, { nine, holes, tees: chosen ? chosen.name : tees, source: real ? 'scorecard' : 'estimated', rating18: ct ? ct.rating : r18, slope18: ct ? ct.slope : s18, par18: ct && c.nine ? parSum * 2 : par18, id: uid('c_'), teeSets });
+    if (chosen) Object.assign(course, { rating: chosen.rating, slope: chosen.slope });
+    onPick(course);
   };
   const setAt = (arr, set, i, val) => { const x = arr.slice(); x[i] = val.replace(/\D/g, '').slice(0, 2); set(x); };
   const offset = nine === 'back' && !c.nine ? 9 : 0;
@@ -156,7 +165,25 @@ function NineSetup({ course: c, saved, onBack, onClose, onPick }) {
             </p>
           ) : (
             <div style={{ marginTop: 10 }}>
-              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8 }}>
+              {teeSets.length > 0 && (
+                <div className="tee-pick" role="radiogroup" aria-label="Tee box" data-testid="course-tees">
+                  {teeSets.map((t) => (
+                    <button key={t.name} role="radio" aria-checked={teeName === t.name} className={`tee-opt ${teeName === t.name ? 'on' : ''}`} onClick={() => setTeeName(t.name)}>
+                      <span className="tee-dot" style={{ background: teeColor(t.name) }} />
+                      <b>{t.name}</b>
+                      <span className="muted num">{t.card}</span>
+                      <span className="grow" />
+                      <span className="num">{t.rating} / {t.slope}</span>
+                    </button>
+                  ))}
+                  <button role="radio" aria-checked={!teeName} className={`tee-opt ${!teeName ? 'on' : ''}`} onClick={() => setTeeName('')}>
+                    <span className="tee-dot" style={{ background: 'transparent', border: '1.5px dashed var(--muted)' }} /><b>Another tee</b><span className="grow" /><span className="muted">type it in</span>
+                  </button>
+                  <small className="muted">Read from the Simulator Golf Tour scorecard ({card.length} tee{card.length > 1 ? 's' : ''}): 18-hole rating/slope on the left, this nine on the right. Check it against the card above. Every tee is saved, so each week can pick its own.</small>
+                </div>
+              )}
+              {(!teeSets.length || !teeName) && <>
+              <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8, marginTop: teeSets.length ? 10 : 0 }}>
                 <label className="field"><span>Tee</span><input className="input" value={tees} placeholder="Blue" onChange={(e) => setTees(e.target.value)} /></label>
                 <label className="field"><span>18-hole rating</span><input className="input" inputMode="decimal" placeholder="75.0" value={r18} onChange={(e) => setR18(e.target.value)} data-testid="course-r18" /></label>
                 <label className="field"><span>Slope</span><input className="input" inputMode="numeric" placeholder="139" value={s18} onChange={(e) => setS18(e.target.value)} data-testid="course-s18" /></label>
@@ -165,6 +192,7 @@ function NineSetup({ course: c, saved, onBack, onClose, onPick }) {
               <p className="t2" style={{ fontSize: 12.5, margin: '8px 0 0' }} data-testid="course-nine-values">
                 {real ? <>9-hole (WHS): rating <b className="num">{real.rating}</b> = {parSum} + ({r18} − {par18}) ÷ 2 · slope <b className="num">{real.slope}</b> (same as 18).</> : 'GSPro cards print rating / slope per tee, like 75.0/139.'}
               </p>
+              </>}
             </div>
           )}
         </div>

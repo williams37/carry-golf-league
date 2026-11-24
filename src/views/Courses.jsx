@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Icon, Sheet, Empty } from '../components/ui.jsx';
-import { gsproToSlope, suggestRating } from '../lib/golf.js';
+import { gsproToSlope, suggestRating, teeSetsOf } from '../lib/golf.js';
 import { uid } from '../lib/seed.js';
+import { teeColor } from './teeColor.js';
 const CoursePicker = lazy(() => import('./CoursePicker.jsx'));
 
 export const blankCourse = () => blank();
@@ -43,6 +44,7 @@ export default function Courses({ ctx }) {
           <button key={c.id} className="card link rise" style={{ textAlign: 'left', animationDelay: `${i * 0.03}s` }} onClick={() => isCommissioner && setEdit(structuredClone(c))}>
             <div className="row spread"><b className="display" style={{ fontSize: 18 }}>{c.name}</b>{usedBy(c.id).length > 0 && <span className="badge final">Wk {usedBy(c.id).join(', ')}</span>}</div>
             <div className="meta" style={{ marginTop: 4 }}>{c.tees && <><span>{c.tees} tees</span>·</>}<span>Par {c.par}</span>·<span>CR {c.rating}</span>·<span>Slope {c.slope}</span></div>
+            {teeSetsOf(c).length > 1 && <div className="row wrap" style={{ gap: 6, marginTop: 8 }}>{teeSetsOf(c).map((t) => <span key={t.name} className="tag tee-tag"><span className="tee-dot" style={{ width: 9, height: 9, background: teeColor(t.name) }} />{t.name} {t.rating}/{t.slope}</span>)}</div>}
             <div className="strip" style={{ marginTop: 12 }}>{c.holes.map((h, j) => <div key={j} className="cell" style={{ height: 26, fontSize: 12 }}>{h.par}</div>)}</div>
             <div className="row" style={{ marginTop: 10 }}>
               <span className="muted" style={{ fontSize: 12 }}>GSPro {c.gspro ?? '–'}{c.lib?.source === 'estimated' ? ' · est.' : ''}</span>
@@ -82,7 +84,10 @@ export function CourseSheet({ ctx, course, onClose, onSaved }) {
   const save = () => {
     if (!c.name.trim()) return toast('Give the course a name');
     if (!siOk) return toast('Stroke index must use 1–9 once each');
-    const clean = { ...c, par, slope: Number(c.slope), rating: Number(c.rating), holes: c.holes.map((h) => ({ par: Number(h.par), si: Number(h.si) })) };
+    const teeSets = (c.teeSets || []).filter((t) => String(t.name || '').trim() && Number(t.rating) > 0 && Number(t.slope) >= 55 && Number(t.slope) <= 155)
+      .map((t) => ({ ...t, name: t.name.trim(), rating: Number(t.rating), slope: Number(t.slope) }));
+    const clean = { ...c, par, slope: Number(c.slope), rating: Number(c.rating), holes: c.holes.map((h) => ({ par: Number(h.par), si: Number(h.si) })), teeSets };
+    if (!teeSets.length) delete clean.teeSets;
     mutate((l) => { const i = l.courses.findIndex((x) => x.id === c.id); if (i >= 0) l.courses[i] = clean; else l.courses.push(clean); });
     toast(exists ? 'Course updated' : 'Course added'); onSaved?.(clean); onClose();
   };
@@ -96,7 +101,14 @@ export function CourseSheet({ ctx, course, onClose, onSaved }) {
       <div className="stack">
         <div className="grid-2">
           <label className="field"><span>Course name</span><input className="input" value={c.name} placeholder="e.g. Pinecrest — Front Nine" onChange={(e) => setC({ ...c, name: e.target.value })} /></label>
-          <label className="field"><span>Tees</span><input className="input" value={c.tees || ''} placeholder="Blue" onChange={(e) => setC({ ...c, tees: e.target.value })} /></label>
+          {teeSetsOf(c).length ? (
+            <label className="field"><span>Default tee</span>
+              <select className="input" value={c.tees || ''} data-testid="course-default-tee" onChange={(e) => { const t = teeSetsOf(c).find((x) => x.name === e.target.value); setAuto(false); setC({ ...c, tees: e.target.value, ...(t ? { rating: t.rating, slope: t.slope } : {}) }); }}>
+                {!teeSetsOf(c).some((t) => t.name === c.tees) && <option value={c.tees || ''}>{c.tees || 'Custom'} · {c.rating}/{c.slope}</option>}
+                {teeSetsOf(c).map((t) => <option key={t.name} value={t.name}>{t.name} · {t.rating}/{t.slope}</option>)}
+              </select>
+              <small>Each week can play a different tee (Scores → Week).</small></label>
+          ) : <label className="field"><span>Tees</span><input className="input" value={c.tees || ''} placeholder="Blue" onChange={(e) => setC({ ...c, tees: e.target.value })} /></label>}
         </div>
         <div className="card flat" style={{ background: 'var(--surface-2)' }}>
           <div className="row spread"><span style={{ fontWeight: 650 }}>GSPro difficulty <span className="display num" style={{ fontSize: 20, marginLeft: 6 }}>{Number(c.gspro ?? 5.8).toFixed(1)}</span></span><span className="muted" style={{ fontSize: 12.5 }}>→ slope {c.slope}</span></div>
@@ -108,6 +120,7 @@ export function CourseSheet({ ctx, course, onClose, onSaved }) {
           </div>
           {c.lib && <small className="muted" style={{ display: 'block', marginTop: 6 }} data-testid="course-source">{c.lib.source === 'estimated' ? 'Estimated from GSPro difficulty. Enter the card\'s rating and slope for fairer handicaps.' : c.lib.source === 'scorecard' ? `From the scorecard: ${c.lib.rating18}/${c.lib.slope18} over 18 (par ${c.lib.par18}), converted to nine holes per WHS.` : 'Rating and slope entered by hand.'} From the GSPro course library (Simulator Golf Tour).</small>}
         </div>
+        <TeeBoxes c={c} setC={setC} />
         <div>
           <div className="hole-grid">
             <span className="lab">Hole</span>{c.holes.map((_, i) => <span key={i} className="hd">{i + 1}</span>)}
@@ -118,5 +131,36 @@ export function CourseSheet({ ctx, course, onClose, onSaved }) {
         </div>
       </div>
     </Sheet>
+  );
+}
+
+/**
+ * Tee boxes for this nine, on the 9-hole scale. Filled from the scorecard when the course came from the library;
+ * otherwise (or for a tee the card doesn't list) the commissioner types them in. The week's tee picker reads this list.
+ */
+function TeeBoxes({ c, setC }) {
+  const list = c.teeSets || [];
+  const set = (i, k, v) => setC({ ...c, teeSets: list.map((t, j) => (j === i ? { ...t, [k]: v, source: t.source === 'scorecard' && k !== 'name' ? 'manual' : t.source || 'manual' } : t)) });
+  const add = () => setC({ ...c, teeSets: [...list, { name: '', rating: '', slope: '', source: 'manual' }] });
+  const del = (i) => setC({ ...c, teeSets: list.filter((_, j) => j !== i) });
+  return (
+    <div className="card flat" style={{ background: 'var(--surface-2)' }} data-testid="tee-boxes">
+      <div className="row spread"><span style={{ fontWeight: 650 }}>Tee boxes</span><button className="btn xs" onClick={add} data-testid="tee-add"><Icon name="plus" size={14} /> Add tee</button></div>
+      <p className="muted" style={{ fontSize: 12.5, margin: '4px 0 8px' }}>
+        {list.some((t) => t.source === 'scorecard') ? 'Read from the course scorecard and converted to nine holes (WHS). Edit if your card says otherwise.' : 'No tee ratings on file for this course. Add each tee from the card: 9-hole rating (half the 18-hole rating, adjusted to this nine\'s par) and slope.'}
+      </p>
+      {list.length > 0 && <div className="stack" style={{ gap: 6 }}>
+        <div className="tee-row muted" style={{ fontSize: 11.5 }}><span /><span>Tee</span><span>9-hole rating</span><span>Slope</span><span /></div>
+        {list.map((t, i) => (
+          <div key={i} className="tee-row">
+            <span className="tee-dot" style={{ background: teeColor(t.name) }} />
+            <input className="input" value={t.name} placeholder="Blue" aria-label="Tee name" onChange={(e) => set(i, 'name', e.target.value)} />
+            <input className="input" inputMode="decimal" value={t.rating} placeholder="35.4" aria-label={`${t.name || 'Tee'} rating`} onChange={(e) => set(i, 'rating', e.target.value)} />
+            <input className="input" inputMode="numeric" value={t.slope} placeholder="128" aria-label={`${t.name || 'Tee'} slope`} onChange={(e) => set(i, 'slope', e.target.value)} />
+            <button className="icon-btn" aria-label={`Remove ${t.name || 'tee'}`} onClick={() => del(i)}><Icon name="trash" size={15} /></button>
+          </div>
+        ))}
+      </div>}
+    </div>
   );
 }

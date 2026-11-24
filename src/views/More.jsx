@@ -17,7 +17,7 @@ export default function More({ ctx }) {
     <>
       <div className="page-head"><h1 className="page-title">More</h1></div>
       <div className="stack">
-        {ITEMS.map((it, i) => (
+        {[...ITEMS, ...(ctx.isAdmin ? [{ id: 'admin', icon: 'shield', t: 'Admin', d: 'Owner tools: every league and account, fixes, audit log' }] : [])].map((it, i) => (
           <button key={it.id} className={`choice rise rise-${Math.min(i, 4)}`} onClick={() => ctx.go(it.id)}>
             <span className="ic"><Icon name={it.icon} size={22} /></span>
             <span className="grow"><b>{it.t}</b><small>{it.d}</small></span><Icon name="chev" />

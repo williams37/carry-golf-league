@@ -1,8 +1,9 @@
-import { weekEntrants, isWeekFinal, standings, sortedWeeks, courseById, computeHandicaps } from './golf.js';
+import { weekEntrants, isWeekFinal, standings, sortedWeeks, courseForWeek, computeHandicaps, missingCards } from './golf.js';
 
 export function weekState(league, week, hcp) {
   const ents = weekEntrants(league, week, hcp);
-  return { ents, final: isWeekFinal(week, ents), done: ents.filter((e) => e.complete).length, course: courseById(league, week.courseId) };
+  const playing = ents.filter((e) => !e.out);
+  return { ents, playing, final: isWeekFinal(week, ents), done: ents.filter((e) => e.complete).length, missing: missingCards(ents), course: courseForWeek(league, week) };
 }
 
 export function currentWeek(league, hcp) {
@@ -37,3 +38,19 @@ export const fmtDate = (iso, opts = { month: 'short', day: 'numeric' }) => {
   const d = new Date(iso + 'T12:00:00');
   return d.toLocaleDateString(undefined, opts);
 };
+
+/**
+ * Week-by-week handicap history for one player (regular or saved sub): the index they carried into each week,
+ * the differential they posted that week (if any, and whether it counts now), then where they stand today.
+ */
+export function handicapHistory(league, hcp, pid) {
+  const log = Object.fromEntries((hcp.log[pid] || []).map((r) => [r.weekId, r]));
+  const pts = sortedWeeks(league).map((w) => {
+    const b = hcp.byWeek[w.id]?.[pid];
+    const r = log[w.id];
+    return b ? { key: w.id, label: `W${w.number}`, date: w.date, index: b.index, method: b.method, diff: r ? r.diff : null, used: !!r?.used, gross: r?.gross ?? null, course: r?.courseName } : null;
+  }).filter(Boolean);
+  const cur = hcp.current[pid];
+  if (cur) pts.push({ key: 'now', label: 'Now', index: cur.index, method: cur.method, diff: null, used: false, now: true });
+  return pts;
+}

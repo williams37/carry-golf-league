@@ -134,7 +134,34 @@ export function settingsOf(league) {
 export const sortedWeeks = (league) => [...(league.weeks || [])].sort((a, b) => a.number - b.number);
 export const courseById = (league, id) => league.courses.find((c) => c.id === id);
 export const playerById = (league, id) => league.players.find((p) => p.id === id);
+export const subPlayerById = (league, id) => (league.subPlayers || []).find((p) => p.id === id);
 export const subKey = (regularId) => `sub:${regularId}`;
+
+// ---------- tees ----------
+/** Tee boxes a course knows about: [{ name, rating, slope, source }] on the 9-hole scale. */
+export const teeSetsOf = (course) => (Array.isArray(course?.teeSets) ? course.teeSets.filter((t) => t && t.name && Number.isFinite(+t.rating) && Number.isFinite(+t.slope)) : []);
+
+/**
+ * The course exactly as it played in a given week: the week's chosen tee sets that week's rating and slope.
+ * Every scoring path (handicaps, net, skins, standings, exports, share, TV) reads the course through here.
+ * Returns a fresh object, so picking a tee never touches the saved course (and can't compound).
+ */
+export function courseForWeek(league, week) {
+  const base = week ? courseById(league, week.courseId) : null;
+  if (!base) return undefined;
+  const tee = week.tee ? teeSetsOf(base).find((t) => t.name === week.tee) : null;
+  if (!tee) return base;
+  return { ...base, rating: Number(tee.rating), slope: Number(tee.slope), tees: tee.name, tee };
+}
+
+// ---------- weekly status: out, subs, skins ----------
+/** Regular marked out for the week with nobody in their slot. */
+export const isOut = (week, regularId) => !!week.out?.[regularId] && !week.subs?.[regularId];
+/**
+ * In this week's skins? Weeks saved before the opt-in existed (no `skinsIn`) keep their old rule: everyone with a card.
+ * New weeks start with everyone out; the commissioner ticks who paid.
+ */
+export const inSkins = (week, key) => (week.skinsIn == null ? true : !!week.skinsIn[key]);
 
 /** Score record for an entrant if it counts (complete + approved/pending policy). */
 function countedCard(week, key, settings) {
@@ -154,7 +181,9 @@ export function computeHandicaps(league) {
   const log = {}; // pid -> [{weekId, weekNumber, gross, ags, diff, courseName, ...}]
   const byWeek = {}; // weekId -> pid -> {index, established, method, ...}
   const current = {};
-  for (const p of league.players) log[p.id] = [];
+  // Saved subs build their own league index exactly like regulars, starting from no handicap (0).
+  const people = [...league.players, ...(league.subPlayers || []).map((sp) => ({ ...sp, startIndex: sp.startIndex ?? 0, isSub: true }))];
+  for (const p of people) log[p.id] = [];
 
   const indexFor = (p) => {
     if (p.manualIndex != null && p.manualIndex !== '') {
@@ -169,26 +198,30 @@ export function computeHandicaps(league) {
   };
 
   for (const w of weeks) {
-    const course = courseById(league, w.courseId);
+    const course = courseForWeek(league, w);
     byWeek[w.id] = {};
-    for (const p of league.players) byWeek[w.id][p.id] = indexFor(p);
+    for (const p of people) byWeek[w.id][p.id] = indexFor(p);
     if (!course) continue;
-    for (const p of league.players) {
-      if (w.subs?.[p.id]) continue; // a sub played this slot
-      const holes = countedCard(w, p.id, settings);
-      if (!holes) continue;
-      const hi = byWeek[w.id][p.id];
+    const post = (pid, cardKey) => {
+      const holes = countedCard(w, cardKey, settings);
+      if (!holes || !log[pid]) return;
+      const hi = byWeek[w.id][pid];
       const ch = courseHandicap(hi.index, course, settings);
       const ags = adjustedGross(holes, course, ch, hi.established);
-      log[p.id].push({
-        weekId: w.id, weekNumber: w.number, courseName: course.name, rating: course.rating, slope: course.slope,
+      log[pid].push({
+        weekId: w.id, weekNumber: w.number, date: w.date, courseName: course.name, tees: course.tees || '', rating: course.rating, slope: course.slope,
         gross: sum(holes), ags, diff: scoreDifferential(ags, course.rating, course.slope), capped: sum(holes) - ags,
       });
+    };
+    for (const p of league.players) {
+      const sub = w.subs?.[p.id];
+      if (sub) { if (sub.playerId) post(sub.playerId, subKey(p.id)); continue; } // the sub's round is theirs, never the regular's
+      post(p.id, p.id);
     }
   }
-  for (const p of league.players) current[p.id] = indexFor(p);
+  for (const p of people) current[p.id] = indexFor(p);
   // mark which differentials currently count
-  for (const p of league.players) {
+  for (const p of people) {
     const c = current[p.id];
     const L = log[p.id];
     const offset = Math.max(0, L.length - 20);
@@ -203,7 +236,7 @@ export function computeHandicaps(league) {
 /** Everyone who teed it up in a week (regulars + subs) with gross/net computed. */
 export function weekEntrants(league, week, hcp = computeHandicaps(league)) {
   const settings = settingsOf(league);
-  const course = courseById(league, week.courseId);
+  const course = courseForWeek(league, week);
   const out = [];
   const teamOf = {};
   (week.teams || []).forEach((t, ti) => t.forEach((pid) => (teamOf[pid] = ti)));
@@ -211,7 +244,8 @@ export function weekEntrants(league, week, hcp = computeHandicaps(league)) {
     const sub = week.subs?.[p.id];
     const isSub = !!sub;
     const key = isSub ? subKey(p.id) : p.id;
-    const index = isSub ? Number(sub.index || 0) : hcp.byWeek[week.id]?.[p.id]?.index ?? 0;
+    // Saved subs play off their own league index (0 until they've built one). Older weeks stored a typed index.
+    const index = isSub ? (sub.playerId ? hcp.byWeek[week.id]?.[sub.playerId]?.index ?? 0 : Number(sub.index || 0)) : hcp.byWeek[week.id]?.[p.id]?.index ?? 0;
     const ch = course ? courseHandicap(index, course, settings) : 0;
     const ph = playingHandicap(ch, settings.allowance);
     const rec = week.scores?.[key];
@@ -219,7 +253,8 @@ export function weekEntrants(league, week, hcp = computeHandicaps(league)) {
     const counted = countedCard(week, key, settings);
     const gross = counted ? sum(counted) : null;
     out.push({
-      key, regularId: p.id, isSub, name: isSub ? sub.name : p.name, color: p.color,
+      key, regularId: p.id, isSub, subPlayerId: sub?.playerId || null, name: isSub ? sub.name : p.name, color: p.color,
+      out: !isSub && isOut(week, p.id), skins: inSkins(week, key),
       index, ch, ph, holes, status: rec?.status || null, photo: rec?.photo || null, complete: !!counted,
       entered: holes.filter((h) => Number.isFinite(h) && h > 0).length,
       gross, net: counted ? gross - ph : null, team: teamOf[p.id] ?? null,
@@ -233,8 +268,9 @@ export function teamResults(league, week, entrants = weekEntrants(league, week))
   const teams = (week.teams || []).map((pair, i) => {
     const members = pair.map((pid) => entrants.find((e) => e.regularId === pid)).filter(Boolean);
     const complete = members.length === 2 && members.every((m) => m.complete);
+    const short = members.some((m) => m.out); // a partner is out with no sub: can't post a team score
     return {
-      team: i, members, complete,
+      team: i, members, complete, short,
       net: complete ? sum(members.map((m) => m.net)) : null,
       gross: complete ? sum(members.map((m) => m.gross)) : null,
     };
@@ -247,7 +283,7 @@ export function teamResults(league, week, entrants = weekEntrants(league, week))
     if (t.net !== last) place = i + 1;
     last = t.net;
     t.place = t.complete ? place : null;
-    t.winner = t.complete && t.net === best && done.length === teams.length;
+    t.winner = t.complete && t.net === best && done.length === teams.filter((x) => !x.short).length;
   });
   return sorted;
 }
@@ -255,8 +291,11 @@ export function teamResults(league, week, entrants = weekEntrants(league, week))
 /** A week is final when every card is in, or the commissioner closed it (absences then apply). */
 export function isWeekFinal(week, entrants) {
   if (week.final) return true;
-  return entrants.length > 0 && entrants.every((e) => e.complete);
+  return entrants.length > 0 && entrants.some((e) => e.complete) && entrants.every((e) => e.complete || e.out);
 }
+
+/** Cards still to come this week: everyone playing (regulars and subs) without a complete card. Out players aren't missing. */
+export const missingCards = (entrants) => entrants.filter((e) => !e.complete && !e.out);
 
 /**
  * Individual season standings — regulars only (subs never appear).
@@ -318,8 +357,9 @@ export function standings(league, throughWeek = Infinity, hcp = computeHandicaps
 export function weekSkins(league, week, entrants = weekEntrants(league, week)) {
   const settings = settingsOf(league);
   const sk = settings.skins;
-  const course = courseById(league, week.courseId);
-  const field = entrants.filter((e) => e.complete);
+  const course = courseForWeek(league, week);
+  // Only complete cards that bought in this week; everyone else still counts for teams and standings.
+  const field = entrants.filter((e) => e.complete && inSkins(week, e.key));
   const holes = [];
   const winnings = {}; // key -> units
   let carry = 0;
@@ -369,7 +409,7 @@ export function seasonSkins(league, hcp = computeHandicaps(league)) {
     const s = weekSkins(league, w, ents);
     for (const [k, v] of Object.entries(s.byKey)) {
       const e = ents.find((x) => x.key === k);
-      const id = e.isSub ? `${k}@${w.id}` : k;
+      const id = e.isSub ? e.subPlayerId || `${k}@${w.id}` : k;
       totals[id] ||= { id, name: e.name, isSub: e.isSub, color: e.color, units: 0, money: 0, weeks: [] };
       totals[id].units += v.units;
       totals[id].money = Math.round((totals[id].money + v.money) * 100) / 100;
@@ -377,6 +417,63 @@ export function seasonSkins(league, hcp = computeHandicaps(league)) {
     }
   }
   return Object.values(totals).sort((a, b) => b.money - a.money || b.units - a.units);
+}
+
+/**
+ * Settle-up for one week of skins: who won which holes and what each player in the pot is owed.
+ * `owed` is the cash they collect; `net` is that minus their buy-in. If nobody won a skin, buy-ins go back.
+ */
+export function skinsPayout(league, week, sk) {
+  const buyIn = Number(settingsOf(league).skins.buyIn) || 0;
+  const refund = sk.field.length >= 2 && sk.awardedUnits === 0;
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const rows = sk.field.map((e) => {
+    const w = sk.byKey[e.key];
+    const owed = refund ? buyIn : w?.money || 0;
+    const holes = sk.holes.filter((h) => h.winner === e.key || h.split?.includes(e.key)).map((h) => h.hole);
+    return { key: e.key, name: e.name, color: e.color, isSub: e.isSub, units: w?.units || 0, holes, paid: buyIn, owed: r2(owed), net: r2(owed - buyIn) };
+  }).sort((a, b) => b.owed - a.owed || a.name.localeCompare(b.name));
+  const holes = sk.holes.filter((h) => h.winner || h.split).map((h) => ({
+    hole: h.hole, units: h.units, carriedIn: h.carriedIn, winners: h.winner ? [h.winner] : h.split,
+    value: r2((h.units * sk.unitValue) / (h.winner ? 1 : h.split.length)),
+  }));
+  return { buyIn, pot: sk.pot, perSkin: r2(sk.unitValue), refund, rows, holes };
+}
+
+// ---------- seasons ----------
+const rid = () => Math.random().toString(36).slice(2, 8);
+/** A closed season as a league-shaped object, so every view and the Excel export can read it unchanged. */
+export function seasonAsLeague(league, entry) {
+  return { ...league, season: entry.season, players: entry.players, subPlayers: entry.subPlayers || [], courses: entry.courses, weeks: entry.weeks, settings: entry.settings, archive: [], archived: entry };
+}
+/**
+ * Close the season: snapshot it (players, subs, courses, weeks, settings, final table) into league.archive,
+ * then start an empty season. With carryIndex, everyone starts next season on the index they finished with.
+ * Scores are untouched (they stay attached to the archived weeks), so nothing is lost.
+ */
+export function closeSeason(league, { nextSeason, carryIndex = true, closedAt = new Date().toISOString() } = {}) {
+  const hcp = computeHandicaps(league);
+  const table = standings(league, Infinity, hcp);
+  const money = seasonSkins(league, hcp);
+  const entry = structuredClone({
+    id: 's_' + rid(), season: league.season || 'Season', closedAt,
+    players: league.players, subPlayers: league.subPlayers || [], courses: league.courses, weeks: league.weeks, settings: league.settings || {},
+  });
+  entry.summary = {
+    weeks: (league.weeks || []).length,
+    table: table.map((r) => ({ id: r.id, name: r.name, place: r.place, total: r.total, played: r.played, avg: r.avg })),
+    skins: money.map((t) => ({ name: t.name, money: t.money, units: t.units, isSub: t.isSub })),
+    index: Object.fromEntries(Object.entries(hcp.current).map(([k, v]) => [k, v.index])),
+  };
+  const next = structuredClone(league);
+  next.archive = [...(league.archive || []), entry];
+  next.weeks = [];
+  next.season = nextSeason || `${league.season || 'Season'} (next)`;
+  if (carryIndex) {
+    for (const p of next.players) if (p.manualIndex == null || p.manualIndex === '') p.startIndex = hcp.current[p.id]?.index ?? p.startIndex ?? 0;
+    for (const sp of next.subPlayers || []) sp.startIndex = hcp.current[sp.id]?.index ?? 0;
+  }
+  return next;
 }
 
 // ---------- team rotation ----------
@@ -448,7 +545,7 @@ export function repeatPartners(teams, history) {
 
 // ---------- weekly highlights ----------
 export function weekHighlights(league, week, entrants = weekEntrants(league, week)) {
-  const course = courseById(league, week.courseId);
+  const course = courseForWeek(league, week);
   const done = entrants.filter((e) => e.complete);
   if (!done.length || !course) return null;
   const lowGross = Math.min(...done.map((e) => e.gross));

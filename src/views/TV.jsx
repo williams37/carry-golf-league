@@ -21,7 +21,7 @@ export default function TV({ ctx }) {
   const sk = wk ? weekSkins(league, wk, st.ents) : null;
   const hl = wk ? weekHighlights(league, wk, st.ents) : null;
   const season = seasonSkins(league, hcp).slice(0, 5);
-  const live = st ? [...st.ents].sort((a, b) => (b.entered - a.entered) || ((a.net ?? 99) - (b.net ?? 99))) : [];
+  const live = st ? st.ents.filter((e) => !e.out).sort((a, b) => (b.entered - a.entered) || ((a.net ?? 99) - (b.net ?? 99))) : [];
 
   // React elements (not HTML strings) so player-entered names can never inject markup
   const ticker = [
@@ -39,7 +39,7 @@ export default function TV({ ctx }) {
         <BrandMark size={52} />
         <div>
           <div className="tv-title">{league.name}</div>
-          <div style={{ color: '#6f877b', fontWeight: 600 }}>{wk ? `Week ${wk.number} · ${st.course?.name} · Par ${st.course?.par} · Slope ${st.course?.slope}` : league.season}</div>
+          <div style={{ color: '#6f877b', fontWeight: 600 }}>{wk ? `Week ${wk.number} · ${st.course?.name}${st.course?.tees ? ` (${st.course.tees})` : ''} · Par ${st.course?.par} · Slope ${st.course?.slope}` : league.season}</div>
         </div>
         <div className="tv-clock">{now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</div>
         <button className="icon-btn" style={{ background: 'transparent', color: '#a9bdb2' }} onClick={() => go('home')} aria-label="Exit TV board"><Icon name="x" /></button>

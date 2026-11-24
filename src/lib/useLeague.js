@@ -49,6 +49,16 @@ export function useLeague() {
 
   const ready = mode === 'local' || authState.status === 'signedIn';
 
+  // ---- admin: the database decides (public.am_i_admin); the link only shows for admins ----
+  const [isAdmin, setIsAdmin] = useState(false);
+  const uid = authState.session?.user?.id;
+  useEffect(() => {
+    if (mode !== 'cloud' || !uid || !store.amIAdmin) { setIsAdmin(false); return; }
+    let alive = true;
+    store.amIAdmin().then((v) => alive && setIsAdmin(v), () => alive && setIsAdmin(false));
+    return () => { alive = false; };
+  }, [mode, uid, store]);
+
   // ---- league list ----
   const refreshList = useCallback(async () => {
     if (!ready) return [];
@@ -160,7 +170,7 @@ export function useLeague() {
     mode, setMode: (m) => { writePrefs({ mode: m }); setModeState(m); },
     authState, checkAuth, cfg, store, leagues, refreshList, activeId,
     setActiveId: (id) => { setActiveId(id); writePrefs({ activeLeagueId: id }); },
-    ...state, derived, syncing, mutate, setScore, deleteScore, removePhoto, photoUrl, deleteWeekData, reload: load, canEditScore,
+    ...state, isAdmin, derived, syncing, mutate, setScore, deleteScore, removePhoto, photoUrl, deleteWeekData, reload: load, canEditScore,
     isCommissioner: mode === 'local' || state.role === 'commissioner',
   };
 }

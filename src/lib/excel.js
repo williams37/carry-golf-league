@@ -1,12 +1,15 @@
 /**
  * Client-side, professionally formatted Excel workbook (ExcelJS, lazy-loaded).
- * Sheets: Summary, Players, Courses, Weekly Results, Individual Standings, Team Results, Skins.
+ * Sheets: Summary, Players, Courses, Weekly Results, Individual Standings, Team Results, Skins, Skins Payout.
  */
 import ExcelJS from 'exceljs';
 import {
   computeHandicaps, sortedWeeks, weekEntrants, teamResults, standings, weekSkins, seasonSkins,
-  courseById, settingsOf, isWeekFinal, weekHighlights,
+  courseForWeek, settingsOf, isWeekFinal, weekHighlights, skinsPayout, teeSetsOf,
 } from './golf.js';
+
+/** Course name as played that week, with its tee. */
+const playedAs = (league, w) => { const c = courseForWeek(league, w); return c ? c.name + (c.tees ? ` (${c.tees})` : '') : ''; };
 
 const C = { ink: 'FF0B1A10', green: 'FF0F5A3F', green2: 'FF1B7A57', pale: 'FFEAF4EE', gold: 'FFF6C453', goldPale: 'FFFFF4D6', sub: 'FFEDE7FF', subInk: 'FF5B3FC4', line: 'FFB7C9BF', grey: 'FF6F877B', red: 'FFD8432F', birdie: 'FFFDE2DD', eagle: 'FFFFE9A8', white: 'FFFFFFFF' };
 const thin = { style: 'thin', color: { argb: C.line } };
@@ -83,7 +86,7 @@ export async function buildWorkbook(league) {
     header(ws, r + 1, ['Week', 'Winning team (combined net)']);
     weeks.forEach((w, i) => {
       const t = teamResults(league, w, weekEntrants(league, w, hcp)).filter((x) => x.winner);
-      ws.getRow(r + 2 + i).values = [`Week ${w.number} · ${courseById(league, w.courseId)?.name || ''}`, t.length ? t.map((x) => x.members.map((m) => m.name + (m.isSub ? ' [SUB]' : '')).join(' & ') + ` (${x.net})`).join(' / ') : 'In progress'];
+      ws.getRow(r + 2 + i).values = [`Week ${w.number} · ${playedAs(league, w)}`, t.length ? t.map((x) => x.members.map((m) => m.name + (m.isSub ? ' [SUB]' : '')).join(' & ') + ` (${x.net})`).join(' / ') : 'In progress'];
     });
     body(ws, r + 2, r + 1 + weeks.length, 2);
   }
@@ -116,6 +119,12 @@ export async function buildWorkbook(league) {
       ws.getRow(r + 1).values = ['  stroke index', '', '', '', '', '', ...c.holes.map((h) => h.si)];
       ws.getRow(r + 1).font = { italic: true, color: { argb: C.grey } };
       r += 2;
+      const tees = teeSetsOf(c);
+      if (tees.length) {
+        ws.getRow(r).values = ['  tees (9-hole rating / slope)', tees.map((t) => `${t.name} ${t.rating}/${t.slope}`).join(' · ')];
+        ws.getRow(r).font = { italic: true, color: { argb: C.grey } };
+        r += 1;
+      }
     });
     body(ws, 4, r - 1, cols, { zebra: false });
   }
@@ -130,12 +139,12 @@ export async function buildWorkbook(league) {
     let r = 4;
     for (const w of weeks) {
       const ents = weekEntrants(league, w, hcp);
-      const course = courseById(league, w.courseId);
+      const course = courseForWeek(league, w);
       const teams = teamResults(league, w, ents).sort((a, b) => a.team - b.team);
       const start = r;
       for (const t of teams) for (const e of t.members) {
         const row = ws.getRow(r);
-        row.values = [w.number, course?.name, t.team + 1, e.name, e.isSub ? 'SUB' : 'Regular', e.index, e.ch, ...e.holes.map((x) => x ?? ''), e.gross ?? '', e.net ?? '', t.net ?? '', w.final || isWeekFinal(w, ents) ? 'Final' : 'Live'];
+        row.values = [w.number, playedAs(league, w), t.team + 1, e.name, e.out ? 'OUT' : e.isSub ? 'SUB' : 'Regular', e.index, e.ch, ...e.holes.map((x) => x ?? ''), e.gross ?? '', e.net ?? '', t.net ?? '', w.final || isWeekFinal(w, ents) ? 'Final' : 'Live'];
         body(ws, r, r, labels.length, { zebra: false });
         if (t.winner) highlight(row, labels.length);
         if (e.isSub) { subStyle(row.getCell(4)); subStyle(row.getCell(5)); }
@@ -179,7 +188,7 @@ export async function buildWorkbook(league) {
       const ents = weekEntrants(league, w, hcp);
       for (const t of teamResults(league, w, ents)) {
         const row = ws.getRow(r);
-        row.values = [w.number, courseById(league, w.courseId)?.name, t.place ?? '', t.members.map((m) => m.name + (m.isSub ? ' [SUB]' : '')).join(' & '), t.net ?? '', t.gross ?? ''];
+        row.values = [w.number, playedAs(league, w), t.place ?? '', t.members.map((m) => m.name + (m.isSub ? ' [SUB]' : '')).join(' & '), t.net ?? '', t.gross ?? ''];
         body(ws, r, r, 6, { zebra: false });
         if (t.winner) highlight(row, 6);
         r++;
@@ -199,7 +208,7 @@ export async function buildWorkbook(league) {
       const sk = weekSkins(league, w, ents);
       const nm = (k) => { const e = ents.find((x) => x.key === k); return e ? e.name.split(' ')[0] + (e.isSub ? ' [SUB]' : '') : ''; };
       const row = ws.getRow(r);
-      row.values = [w.number, courseById(league, w.courseId)?.name, ...sk.holes.map((h) => (h.winner ? `${nm(h.winner)} (${h.units})` : h.split ? `split ${h.split.length}` : h.carriedOut ? 'carry' : 'push')), sk.pot, Math.round(sk.unitValue * 100) / 100];
+      row.values = [w.number, playedAs(league, w), ...sk.holes.map((h) => (h.winner ? `${nm(h.winner)} (${h.units})` : h.split ? `split ${h.split.length}` : h.carriedOut ? 'carry' : 'push')), sk.pot, Math.round(sk.unitValue * 100) / 100];
       body(ws, r, r, 13, { zebra: false });
       sk.holes.forEach((h, i) => { if (h.winner) { const c = row.getCell(3 + i); c.fill = fill(C.goldPale); c.font = { bold: true }; } else if (h.carriedOut) row.getCell(3 + i).font = { italic: true, color: { argb: C.grey } }; });
       row.getCell(12).numFmt = '"$"#,##0.00'; row.getCell(13).numFmt = '"$"#,##0.00';
@@ -216,6 +225,30 @@ export async function buildWorkbook(league) {
     });
     body(ws, r + 2, r + 1 + sSkins.length, 5);
     if (sSkins.length) highlight(ws.getRow(r + 2), 5);
+  }
+
+  // ---------- Skins Payout ----------
+  {
+    const ws = wb.addWorksheet('Skins Payout', { views: [{ showGridLines: false }] });
+    ws.columns = [{ width: 7 }, { width: 26 }, { width: 24 }, { width: 10 }, { width: 14 }, { width: 10 }, { width: 10 }, { width: 10 }];
+    titleRows(ws, 'Skins payout · who is owed what', 'Only players who bought in that week are in the pot. Owed = cash to collect; Net = owed − buy-in.', 8);
+    header(ws, 3, ['Week', 'Course', 'Player', 'Skins', 'Holes won', 'Buy-in', 'Owed', 'Net']);
+    let r = 4;
+    for (const w of weeks) {
+      const ents = weekEntrants(league, w, hcp);
+      const sk = weekSkins(league, w, ents);
+      if (!sk.field.length) continue;
+      const pay = skinsPayout(league, w, sk);
+      for (const x of pay.rows) {
+        const row = ws.getRow(r);
+        row.values = [w.number, playedAs(league, w), x.name + (x.isSub ? ' [SUB]' : ''), Math.round(x.units * 100) / 100, x.holes.join(', '), x.paid, x.owed, x.net];
+        [6, 7, 8].forEach((k) => (row.getCell(k).numFmt = '"$"#,##0.00'));
+        body(ws, r, r, 8, { zebra: false });
+        if (x.owed > 0) row.getCell(7).font = { bold: true };
+        r++;
+      }
+      ws.getRow(r - 1).eachCell((c) => (c.border = { ...border, bottom: { style: 'medium', color: { argb: C.green } } }));
+    }
   }
 
   wb.eachSheet((ws) => { ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }; });

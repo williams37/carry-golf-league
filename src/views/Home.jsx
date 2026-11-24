@@ -62,20 +62,27 @@ export default function Home({ ctx }) {
           {st.final ? <span className="badge final">Final</span> : <span className="badge live">● Live</span>}
         </div>
         <h2>{st.course?.name || 'Course TBD'}</h2>
-        <div className="t2" style={{ fontSize: 14 }}>{st.course?.tees ? `${st.course.tees} tees · ` : ''}9 holes · GSPro difficulty {st.course?.gspro ?? '–'}</div>
+        <div className="t2" style={{ fontSize: 14 }} data-testid="home-tees">{st.course?.tees ? `${st.course.tees} tees · ` : ''}9 holes · GSPro difficulty {st.course?.gspro ?? '–'}</div>
         <div className="hero-stats">
           <div className="stat"><div className="v num">{st.course?.par}</div><div className="k">Par</div></div>
           <div className="stat"><div className="v num">{st.course?.rating}</div><div className="k">Rating</div></div>
           <div className="stat"><div className="v num">{st.course?.slope}</div><div className="k">Slope</div></div>
-          <div className="stat"><div className="v num">{st.done}<span className="muted" style={{ fontSize: 16 }}>/{st.ents.length}</span></div><div className="k">Cards in</div></div>
+          <div className="stat"><div className="v num">{st.done}<span className="muted" style={{ fontSize: 16 }}>/{st.playing.length}</span></div><div className="k">Cards in</div></div>
         </div>
-        <div className="moneybar" style={{ marginTop: 14, height: 6 }}><i style={{ width: `${(st.done / st.ents.length) * 100}%`, background: 'var(--tracer)' }} /></div>
+        <div className="moneybar" style={{ marginTop: 14, height: 6 }}><i style={{ width: `${(st.done / Math.max(1, st.playing.length)) * 100}%`, background: 'var(--tracer)' }} /></div>
         <div className="row wrap" style={{ marginTop: 16 }}>
           <button className="btn primary" onClick={() => go(`scores/${wk.id}`)}><Icon name="edit" size={17} /> {myRow ? (myRow.complete ? 'View my card' : 'Enter my card') : 'Enter scores'}</button>
           <button className="btn" onClick={() => go('tv')}><Icon name="tv" size={17} /> TV board</button>
         </div>
       </section>
 
+      {isCommissioner && !st.final && st.missing.length > 0 && (st.done > 0 || wk.date <= new Date().toISOString().slice(0, 10)) && (
+        <div className="banner warn rise rise-1" style={{ marginTop: 12 }} data-testid="home-missing">
+          <Icon name="card" size={20} style={{ color: 'var(--gold)', flex: 'none' }} />
+          <div className="grow" style={{ minWidth: 0 }}><b>Week {wk.number}: waiting on {st.missing.length} card{st.missing.length > 1 ? 's' : ''}.</b> <span className="t2">{st.missing.map((e) => shortName(e.name) + (e.isSub ? ' (sub)' : '')).join(', ')}</span></div>
+          <button className="btn sm" onClick={() => go(`scores/${wk.id}`)}>Scores</button>
+        </div>
+      )}
       {isCommissioner && pending.length > 0 && (
         <div className="banner warn rise rise-1" style={{ marginTop: 12 }}>
           <Icon name="info" size={20} style={{ color: 'var(--gold)', flex: 'none' }} />

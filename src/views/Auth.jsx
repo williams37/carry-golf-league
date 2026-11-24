@@ -25,6 +25,7 @@ export default function AuthScreen({ ctx, joining }) {
   const [errCode, setErrCode] = useState(null);
   const [slow, setSlow] = useState(false);
   const [info, setInfo] = useState(null);
+  const [exists, setExists] = useState(null); // email that already has an account (sign-up or a failed sign-in)
 
   useEffect(() => {
     if (authState.status !== 'checking') return;
@@ -35,18 +36,22 @@ export default function AuthScreen({ ctx, joining }) {
   useEffect(() => { if (authState.error) setErr(authState.error); }, [authState.error]);
 
   const run = async (fn) => {
-    setBusy(true); setErr(null); setErrCode(null); setInfo(null);
+    setBusy(true); setErr(null); setErrCode(null); setInfo(null); setExists(null);
     localStorage.setItem('carry:email', email.trim());
     try { await fn(); } catch (e) {
       const m = e.message || String(e);
       setErrCode(e.code || null);
+      if (e.code === 'invalid_credentials') { setExists({ email: email.trim(), why: 'signin' }); return; }
       setErr(/failed to fetch|networkerror|load failed/i.test(m) ? "Couldn't reach the league server. Check your connection and try again." : m);
     } finally { setBusy(false); }
   };
   const offline = () => { writePrefs({ onboarded: true }); setMode('local'); location.hash = '/home'; location.reload(); };
-  const pickTab = (t) => { setTab(t); localStorage.setItem('carry:authTab', t); setErr(null); setInfo(null); };
+  const pickTab = (t) => { setTab(t); localStorage.setItem('carry:authTab', t); setErr(null); setInfo(null); setExists(null); };
   const em = email.trim();
   const okEmail = /^\S+@\S+\.\S+$/.test(em);
+  // The two ways back into an existing account that has no (known) password
+  const emailCode = () => run(async () => { pickTab('code'); await auth.sendLink(cfg, em); setSent(true); setInfo(`We emailed a sign-in code to ${em}. Type it below, or tap the link in the email on this device.`); });
+  const forgot = () => run(async () => { setPwMode('forgot'); await auth.resetPassword(cfg, em); setInfo(`We emailed a reset link to ${em}. Open it on this device to choose a password.`); });
 
   if (authState.status === 'checking') {
     return (
@@ -100,6 +105,24 @@ export default function AuthScreen({ ctx, joining }) {
           </div>
         )}
         {info && <div className="banner"><Icon name="mail" size={18} style={{ color: 'var(--aqua)', flex: 'none' }} />{info}</div>}
+        {exists && (
+          <div className="banner warn" role="alert" style={{ display: 'grid', gap: 10 }} data-testid="account-exists">
+            <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
+              <Icon name="info" size={18} style={{ color: 'var(--gold)', flex: 'none', marginTop: 2 }} />
+              <div>
+                {exists.why === 'signup'
+                  ? <><b>{exists.email} already has a Carry account.</b> Sign in with its password instead.</>
+                  : <><b>That password didn't work for {exists.email}.</b> Check it and try again.</>}
+                <div className="t2" style={{ marginTop: 4 }}>Made the account with an email code? Then it has no password yet. Get a code to sign in, or use Forgot password to set one.</div>
+              </div>
+            </div>
+            <div className="row wrap" style={{ gap: 6 }}>
+              <button className="btn sm primary" disabled={busy} onClick={emailCode} data-testid="exists-code"><Icon name="mail" size={15} /> Email me a code</button>
+              <button className="btn sm" disabled={busy} onClick={forgot} data-testid="exists-forgot">Forgot password</button>
+              {exists.why === 'signup' && <button className="btn sm ghost" onClick={() => { setExists(null); setPwMode('signin'); }}>Sign in</button>}
+            </div>
+          </div>
+        )}
         <Seg value={tab} onChange={pickTab} options={[{ value: 'password', label: 'Password' }, { value: 'code', label: 'Email code' }]} />
         <label className="field"><span>Email</span><input className="input" name="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" /></label>
 
@@ -109,7 +132,7 @@ export default function AuthScreen({ ctx, joining }) {
             else run(async () => {
               const r = await auth.signUp(cfg, em, password);
               if (r.session) await checkAuth();
-              else if (r.exists) { setPwMode('signin'); setInfo('That email already has an account. Sign in with its password.'); }
+              else if (r.exists) { setPwMode('signin'); setPassword(''); setExists({ email: em, why: 'signup' }); }
               else setConfirmFor(em);
             });
           }}>

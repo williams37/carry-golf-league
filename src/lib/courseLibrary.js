@@ -3,24 +3,32 @@ import { gsproToSlope, suggestRating } from './golf.js';
 
 const PAGES = 'https://williams37.github.io/carry-golf-league/';
 // The single-file build runs from file:// (or anywhere), so it reads the published copy; GitHub Pages sends CORS *.
-export const LIBRARY_URL = (import.meta.env?.MODE === 'single' ? PAGES : (import.meta.env?.BASE_URL || '/')) + 'courses.json';
+const ROOT = import.meta.env?.MODE === 'single' ? PAGES : (import.meta.env?.BASE_URL || '/');
+export const LIBRARY_URL = ROOT + 'courses.json';
+/** Per-tee rating/slope read off each course's SGT scorecard (scripts/sync-tees.mjs). Optional: the picker works without it. */
+export const TEES_URL = ROOT + 'tees.json';
 export const SGT_URL = 'https://simulatorgolftour.com/courses/';
 export const scorecardImage = (id) => (typeof id === 'number' ? `https://simulatorgolftour.com/public/assets/courseImages/scorecards/scorecard_${id}.jpg` : null);
 
 let loading = null;
 export function loadLibrary(fetchImpl = fetch) {
-  if (!loading) loading = fetchImpl(LIBRARY_URL).then((r) => { if (!r.ok) throw new Error(`Course list unavailable (${r.status})`); return r.json(); })
-    .then(indexLibrary).catch((e) => { loading = null; throw e; });
+  if (!loading) {
+    const tees = fetchImpl(TEES_URL).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    loading = fetchImpl(LIBRARY_URL).then((r) => { if (!r.ok) throw new Error(`Course list unavailable (${r.status})`); return r.json(); })
+      .then(async (lib) => indexLibrary(lib, await tees)).catch((e) => { loading = null; throw e; });
+  }
   return loading;
 }
 
 export const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
 
 /** Rows → objects with search keys. */
-export function indexLibrary(lib) {
+export function indexLibrary(lib, teeData = null) {
   const ix = Object.fromEntries(lib.cols.map((c, i) => [c, i]));
+  const cards = teeData?.cards || {};
   const courses = lib.courses.map((r) => {
     const c = Object.fromEntries(lib.cols.map((k) => [k, r[ix[k]]]));
+    c.cardTees = (cards[c.id]?.t || []).map(([name, rating, slope]) => ({ name, rating, slope }));
     c.styles = c.styles ? String(c.styles).split(',') : [];
     c.fictional = /fictional|fantasy/i.test(c.loc) || c.styles.includes('fantasy');
     c.nine = c.par != null && c.par <= 40;
@@ -125,15 +133,27 @@ export function estimateFromDifficulty(diff, par9) {
   return { slope, rating: suggestRating(par9, slope) };
 }
 
+/**
+ * Tee boxes printed on the scorecard → 9-hole tee sets for one nine (WHS: slope unchanged, rating = par9 + (r18 − par18) / 2).
+ * A 9-hole course's card may already print 9-hole ratings (rating < 50); those are used as printed.
+ */
+export function teeSetsFromCard(cardTees, { nine9 = false, par9, par18 }) {
+  return (cardTees || []).map((t) => {
+    const asNine = nine9 && t.rating < 50;
+    const v = asNine ? { rating: t.rating, slope: t.slope } : nineFrom18({ rating18: t.rating, slope18: t.slope, par18: nine9 ? par9 * 2 : par18, par9 });
+    return v ? { name: t.name, rating: v.rating, slope: v.slope, card: `${t.rating.toFixed(1)}/${t.slope}`, source: 'scorecard' } : null;
+  }).filter(Boolean);
+}
+
 /** Build a league course object from a library pick + the commissioner's choices. */
-export function courseFromLibrary(c, { nine = 'front', holes, tees = '', source = 'estimated', rating18, slope18, par18, id }) {
+export function courseFromLibrary(c, { nine = 'front', holes, tees = '', source = 'estimated', rating18, slope18, par18, id, teeSets = [] }) {
   const par = holes.reduce((a, h) => a + Number(h.par), 0);
   const est = estimateFromDifficulty(c.diff, par);
   const real = source === 'scorecard' ? nineFrom18({ rating18, slope18, par18, par9: par }) : null;
   const v = real || est;
   const label = c.nine ? c.name : `${c.name} — ${nine === 'back' ? 'Back' : 'Front'} Nine`;
   return {
-    id, name: label, tees, gspro: c.diff ?? 5.8, slope: v.slope, rating: v.rating, par, holes,
+    id, name: label, tees, gspro: c.diff ?? 5.8, slope: v.slope, rating: v.rating, par, holes, ...(teeSets.length ? { teeSets } : {}),
     lib: { id: c.id, nine: c.nine ? 'nine' : nine, source: real ? 'scorecard' : 'estimated', ...(real ? { rating18: Number(rating18), slope18: Number(slope18), par18: Number(par18) } : {}) },
   };
 }

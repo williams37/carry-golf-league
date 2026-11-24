@@ -3,7 +3,7 @@
  * the email subject, the workbook filename, and a mailto: URL.
  * No DOM here, so it is unit-tested (tests/share.test.js).
  */
-import { computeHandicaps, sortedWeeks, weekEntrants, teamResults, weekSkins, standings, isWeekFinal, courseById } from './golf.js';
+import { computeHandicaps, sortedWeeks, weekEntrants, teamResults, weekSkins, standings, isWeekFinal, courseForWeek } from './golf.js';
 
 const shortName = (name = '') => { // same as ui.jsx (kept DOM-free here)
   const clean = name.replace(/".*?"\s*/g, '');
@@ -34,8 +34,8 @@ export function leagueSummary(league) {
     lines.push('', 'No rounds played yet.');
     return { subject, body: lines.join('\n'), facts };
   }
-  const course = courseById(league, week.courseId);
-  lines.push(`${isFinal ? 'Through' : 'In progress:'} week ${n}${course ? ` (${course.name})` : ''}`, '');
+  const course = courseForWeek(league, week);
+  lines.push(`${isFinal ? 'Through' : 'In progress:'} week ${n}${course ? ` (${course.name}${course.tees ? `, ${course.tees} tees` : ''})` : ''}`, '');
 
   const table = isFinal ? standings(league, n, hcp).filter((r) => r.played > 0) : [];
   if (table.length) {

@@ -8,7 +8,7 @@ describe('excel export', () => {
     const blob = await buildWorkbook(demoLeague());
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(await blob.arrayBuffer());
-    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Players', 'Courses', 'Weekly Results', 'Individual Standings', 'Team Results', 'Skins']);
+    expect(wb.worksheets.map((w) => w.name)).toEqual(['Summary', 'Players', 'Courses', 'Weekly Results', 'Individual Standings', 'Team Results', 'Skins', 'Skins Payout']);
     const weekly = wb.getWorksheet('Weekly Results');
     const types = []; weekly.eachRow((r, i) => i > 3 && types.push(r.getCell(5).value));
     expect(types).toContain('SUB');

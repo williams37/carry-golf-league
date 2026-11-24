@@ -58,14 +58,18 @@ export function demoLeague(seed = DEMO_SEED) {
   const start = new Date('2026-10-08T19:00:00');
   const ids = lg.players.map((p) => p.id);
   const history = [];
-  // sub indexes are on the 9-hole league scale (≈ half an 18-hole WHS index)
-  const subsPlan = { 3: [[6, 'Rick Alvarez', 6.2]], 5: [[2, 'Hannah Cho', 4.0]], 6: [[4, 'Gus Patel', 7.4]] };
+  // Saved subs: they start with no handicap and build their own league index. skill only drives the fake scores.
+  lg.subPlayers = [
+    { id: 's1', name: 'Rick Alvarez', color: '#9aa7ff', skill: 12.4 },
+    { id: 's2', name: 'Hannah Cho', color: '#ff9ad5', skill: 8.0 },
+  ];
+  const subsPlan = { 3: [[6, 's1']], 5: [[2, 's2']], 6: [[4, 's1']] };
   for (let n = 1; n <= 7; n++) {
     const teams = generateTeams(ids, history, { seed: n * 7 });
     history.push(teams);
     const date = new Date(start.getTime() + (n - 1) * 7 * 864e5);
     const w = { id: `w${n}`, number: n, date: date.toISOString().slice(0, 10), courseId: lg.courses[n - 1].id, teams, subs: {}, scores: {} };
-    for (const [pi, name, index] of subsPlan[n] || []) w.subs[ids[pi]] = { name, index };
+    for (const [pi, sid] of subsPlan[n] || []) w.subs[ids[pi]] = { playerId: sid, name: lg.subPlayers.find((x) => x.id === sid).name };
     lg.weeks.push(w);
   }
   // Generate scores
@@ -75,7 +79,7 @@ export function demoLeague(seed = DEMO_SEED) {
     const live = w.number === 7;
     lg.players.forEach((p, pi) => {
       const sub = w.subs[p.id];
-      const skill = sub ? sub.index * 2 : p.skill; // back to the 18-hole-ish skill scale
+      const skill = sub ? lg.subPlayers.find((x) => x.id === sub.playerId).skill : p.skill;
       const key = sub ? subKey(p.id) : p.id;
       const holesToPlay = live ? [9, 6, 9, 4, 7, 9, 5, 3][pi] : HOLES;
       const holes = c.holes.map((h, i) => {
@@ -89,6 +93,8 @@ export function demoLeague(seed = DEMO_SEED) {
     });
   }
   lg.weeks[6].scores[ids[3]].status = 'pending';
+  // the live week uses the skins opt-in: the commissioner has ticked six who paid
+  lg.weeks[6].skinsIn = Object.fromEntries(ids.filter((_, i) => i !== 1 && i !== 5).map((id) => [id, true]));
   return lg;
 }
 

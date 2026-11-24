@@ -54,13 +54,17 @@ console.log('390px — search, set up a nine from the scorecard, save');
   await p.waitForSelector('[data-testid=course-setup]');
   const img = await p.waitForFunction(() => { const i = document.querySelector('[data-testid=course-scorecard] img'); return i && i.complete && i.naturalWidth > 0 && i.naturalWidth; }, null, { timeout: 15000 }).then((h) => h.jsonValue()).catch(() => 0);
   ok(img > 300, `SGT scorecard image shown (${img}px wide)`);
-  ok((await p.textContent('[data-testid=course-estimate]')).includes('Estimated from GSPro difficulty'), 'default values labelled "Estimated from GSPro difficulty"');
+  const cardTees = await p.locator('[data-testid=course-tees] .tee-opt').count();
+  ok(cardTees >= 2, `courses with card tees open on "From the card" (${cardTees - 1} tees + Another tee)`);
+  await p.click('.sheet .seg >> text=Estimate');
+  ok((await p.textContent('[data-testid=course-estimate]')).includes('Estimated from GSPro difficulty'), 'estimate still available, labelled "Estimated from GSPro difficulty"');
   await shot(p, '3-setup-estimate'); await noOverflow(p, 'setup');
   // Back nine of Torrey South from the card: pars 4 3 4 5 4 4 3 4 5, index 12 11 10 9 8 7 6 4 2, Blue 75.0/139, par 72.
   await p.click('.sheet .seg >> text=Back 9');
   const pars = [4, 3, 4, 5, 4, 4, 3, 4, 5], idx = [12, 11, 10, 9, 8, 7, 6, 4, 2];
   for (let i = 0; i < 9; i++) { await p.fill(`[aria-label="Par hole ${i + 10}"]`, String(pars[i])); await p.fill(`[aria-label="Card index hole ${i + 10}"]`, String(idx[i])); }
   await p.click('.sheet .seg >> text=From the card');
+  if (await p.locator('[data-testid=course-tees]').count()) await p.click('[data-testid=course-tees] >> text=Another tee');
   await p.fill('.field:has-text("Tee") input', 'Blue');
   await p.fill('[data-testid=course-r18]', '75.0'); await p.fill('[data-testid=course-s18]', '139');
   const nv = await p.textContent('[data-testid=course-nine-values]');
