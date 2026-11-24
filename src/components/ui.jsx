@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 // ---------- icons (hand-tuned 24px strokes) ----------
@@ -139,7 +140,8 @@ export function Sheet({ open, onClose, title, subtitle, children, footer, wide }
     return () => { window.removeEventListener('keydown', k); document.body.style.overflow = ''; };
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  // Portal to <body> so a transformed/animated ancestor (e.g. the welcome wizard) can't trap the fixed sheet.
+  return createPortal(
     <>
       <div className="scrim" onClick={onClose} />
       <div className={`sheet ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={typeof title === 'string' ? title : undefined}>
@@ -154,7 +156,8 @@ export function Sheet({ open, onClose, title, subtitle, children, footer, wide }
         <div className="sheet-body">{children}</div>
         {footer && <div className="sheet-foot">{footer}</div>}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 

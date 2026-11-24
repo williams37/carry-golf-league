@@ -13,6 +13,7 @@
   --spring: cubic-bezier(.34, 1.56, .64, 1);
   --tab-h: 68px;
   --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
 }
 :root, [data-theme='dark'] {
   color-scheme: dark;
@@ -70,7 +71,7 @@ a { color: var(--aqua); }
 .main { min-width: 0; padding: 0 16px calc(var(--tab-h) + var(--safe-b) + 28px); max-width: 1180px; width: 100%; margin: 0 auto; }
 .topbar {
   position: sticky; top: 0; z-index: 30; display: flex; align-items: center; gap: 12px;
-  padding: 12px 16px; margin: 0 -16px 8px; background: var(--glass); backdrop-filter: blur(16px) saturate(1.4);
+  padding: calc(12px + var(--safe-t)) 16px 12px; margin: 0 -16px 8px; background: var(--glass); backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4); border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
@@ -243,15 +244,15 @@ a { color: var(--aqua); }
 .cell.eagle.skin::after { width: 5px; height: 5px; top: auto; bottom: -5px; border: 0; }
 
 /* ===== Sheet / modal ===== */
-.scrim { position: fixed; inset: 0; z-index: 80; background: rgba(2, 8, 5, .55); backdrop-filter: blur(3px); animation: fade .25s var(--ease); }
-.sheet { position: fixed; z-index: 81; left: 0; right: 0; bottom: 0; max-height: 94vh; display: flex; flex-direction: column; background: var(--surface); border-radius: 24px 24px 0 0; border: 1px solid var(--line-2); border-bottom: 0; box-shadow: 0 -20px 60px -20px rgba(0,0,0,.6); animation: up .42s var(--spring); padding-bottom: var(--safe-b); }
+.scrim { position: fixed; inset: 0; touch-action: none; z-index: 92; background: rgba(2, 8, 5, .55); backdrop-filter: blur(3px); animation: fade .25s var(--ease); }
+.sheet { position: fixed; z-index: 93; left: 0; right: 0; bottom: 0; max-height: 94vh; max-height: calc(100dvh - var(--safe-t) - 12px); display: flex; flex-direction: column; background: var(--surface); border-radius: 24px 24px 0 0; border: 1px solid var(--line-2); border-bottom: 0; box-shadow: 0 -20px 60px -20px rgba(0,0,0,.6); animation: up .42s var(--spring); padding-bottom: var(--safe-b); }
 .sheet-grab { width: 40px; height: 4px; border-radius: 4px; background: var(--line-2); margin: 8px auto 0; flex: none; }
 .sheet-head { display: flex; align-items: center; gap: 10px; padding: 12px 18px 10px; flex: none; }
 .sheet-title { font-family: var(--display); font-weight: 600; font-size: 21px; letter-spacing: -.015em; }
-.sheet-body { overflow: auto; padding: 4px 18px 18px; overscroll-behavior: contain; }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 18px 18px; overscroll-behavior: contain; }
 .sheet-foot { flex: none; display: flex; gap: 10px; padding: 12px 18px 16px; border-top: 1px solid var(--line); }
 @media (min-width: 760px) {
-  .sheet { left: 50%; bottom: auto; top: 50%; width: min(640px, 94vw); transform: translate(-50%, -50%); border-radius: 24px; border-bottom: 1px solid var(--line-2); animation: pop .35s var(--spring); max-height: 88vh; }
+  .sheet { left: 50%; bottom: auto; top: 50%; width: min(640px, 94vw); transform: translate(-50%, -50%); border-radius: 24px; border-bottom: 1px solid var(--line-2); animation: pop .35s var(--spring); max-height: 88vh; max-height: calc(100dvh - var(--safe-t) - 48px); }
   .sheet.wide { width: min(900px, 94vw); }
   .sheet-grab { display: none; }
 }
@@ -347,9 +348,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 mark { background: color-mix(in oklab, var(--lime) 35%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
 
 /* onboarding */
-.welcome { position: fixed; inset: 0; z-index: 90; background: var(--bg); overflow: auto; display: grid; place-items: center; padding: 24px; animation: fade .4s; }
+.welcome { position: fixed; inset: 0; z-index: 90; background: var(--bg); overflow: auto; overscroll-behavior: contain; display: grid; place-items: start center; padding: max(24px, var(--safe-t)) 24px max(24px, var(--safe-b)); animation: fade .4s; }
 .welcome::before { content: ''; position: fixed; inset: 0; background: radial-gradient(70% 50% at 50% 0%, color-mix(in oklab, var(--aqua) 22%, transparent), transparent 70%); pointer-events: none; }
-.welcome-inner { position: relative; width: min(520px, 100%); display: grid; gap: 14px; }
+.welcome-inner { position: relative; margin-block: auto; width: min(520px, 100%); display: grid; gap: 14px; }
 .welcome h1 { font-family: var(--display); font-size: clamp(44px, 12vw, 72px); line-height: .92; letter-spacing: -.035em; margin: 0; font-weight: 600; }
 .welcome .lede { font-size: 17px; color: var(--text-2); margin: 0 0 6px; }
 .choice { display: flex; gap: 14px; align-items: center; text-align: left; padding: 16px; border-radius: 18px; border: 1px solid var(--line-2); background: var(--surface); transition: .25s var(--ease); width: 100%; }
@@ -365,7 +366,7 @@ mark { background: color-mix(in oklab, var(--lime) 35%, transparent); color: inh
 .tv { position: fixed; inset: 0; z-index: 200; background: #040a07; color: #eaf4ee; overflow: hidden; display: grid; grid-template-rows: auto 1fr auto; font-size: clamp(14px, 1.25vw, 22px);
   --surface: #0b1813; --surface-2: #10211a; --surface-3: #183026; --line: rgba(220,255,235,.08); --muted: #6f877b; --text-2: #a9bdb2; --gold: #f6c453; --lime: #c6f36d; --red: #ff6b5b; --aqua: #4fe3c1; }
 .tv::before { content: ''; position: absolute; inset: 0; background: radial-gradient(60% 50% at 80% -10%, rgba(79,227,193,.18), transparent 70%), radial-gradient(50% 40% at 0% 110%, rgba(198,243,109,.10), transparent 70%); pointer-events: none; }
-.tv-top { display: flex; align-items: center; gap: 1.2em; padding: 1.4em 2.2em .6em; position: relative; }
+.tv-top { display: flex; align-items: center; gap: 1.2em; padding: max(1.4em, var(--safe-t)) 2.2em .6em; position: relative; }
 .tv-title { font-family: var(--display); font-size: 2.3em; font-weight: 600; letter-spacing: -.02em; line-height: 1; }
 .tv-clock { margin-left: auto; font-family: var(--display); font-size: 2em; font-variant-numeric: tabular-nums; color: #a9bdb2; }
 .tv-body { position: relative; padding: .6em 2.2em; display: grid; grid-template-columns: 1.25fr 1fr; gap: 1.6em; min-height: 0; }
