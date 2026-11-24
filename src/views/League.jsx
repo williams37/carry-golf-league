@@ -153,10 +153,12 @@ function Invites({ ctx }) {
   return (
     <section className="card">
       <div className="row spread"><div className="card-title">Invite players</div>{isCommissioner && <button className="btn xs ghost" onClick={async () => { await store.newInvite(league.id); reload(); toast('New invite code. The old one no longer works.'); }}>New code</button>}</div>
-      <div className="row" style={{ marginTop: 10 }}>
-        <div className="display num" style={{ fontSize: 34, letterSpacing: '.18em', flex: 1 }}>{league.inviteCode}</div>
-        <button className="btn sm" onClick={() => copy(link)}><Icon name="link" size={15} /> Copy link</button>
-        <button className="btn sm primary" onClick={share}>Share</button>
+      <div className="row wrap" style={{ marginTop: 10, rowGap: 8 }}>
+        <div className="display num" style={{ fontSize: 'clamp(26px, 8vw, 34px)', letterSpacing: '.14em', flex: '1 1 auto', minWidth: 0 }}>{league.inviteCode}</div>
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn sm" onClick={() => copy(link)}><Icon name="link" size={15} /> Copy link</button>
+          <button className="btn sm primary" onClick={share}>Share</button>
+        </div>
       </div>
       <div className="stack" style={{ marginTop: 12 }}>
         {members.map((m) => (
